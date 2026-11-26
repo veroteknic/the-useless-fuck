@@ -1,0 +1,113 @@
+name: build and release
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2-stable
+
+jobs:
+  build:
+    name: export windows exe
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache Godot CLI and export templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/godot
+            ${{ runner.temp }}/godot-templates
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64-v1
+
+      - name: Install Godot and export templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}"
+          godot_bin="$RUNNER_TEMP/godot/Godot_v4.7.2-stable_linux.x86_64"
+          templates_dir="$RUNNER_TEMP/godot-templates/4.7.2.stable"
+
+          mkdir -p "$RUNNER_TEMP/godot" "$RUNNER_TEMP/dl"
+          curl -fsSL "$base/Godot_v4.7.2-stable_linux.x86_64.zip" -o "$RUNNER_TEMP/dl/godot.zip"
+          unzip -q -o "$RUNNER_TEMP/dl/godot.zip" -d "$RUNNER_TEMP/godot"
+          chmod +x "$godot_bin"
+
+          curl -fsSL "$base/Godot_v4.7.2-stable_export_templates.tpz" -o "$RUNNER_TEMP/dl/templates.tpz"
+          unzip -q -o "$RUNNER_TEMP/dl/templates.tpz" -d "$RUNNER_TEMP/dl/templates"
+          mkdir -p "$templates_dir"
+          if [ -d "$RUNNER_TEMP/dl/templates/templates" ]; then
+            src="$RUNNER_TEMP/dl/templates/templates"
+          else
+            src="$RUNNER_TEMP/dl/templates"
+          fi
+          cp -a "$src/." "$templates_dir/"
+
+      - name: Make Godot executable
+        shell: bash
+        run: chmod +x "$RUNNER_TEMP/godot/Godot_v4.7.2-stable_linux.x86_64"
+
+      - name: Import project
+        shell: bash
+        run: "$RUNNER_TEMP/godot/Godot_v4.7.2-stable_linux.x86_64" --headless --path . --editor --quit
+
+      - name: Export Windows exe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/windows
+          "$RUNNER_TEMP/godot/Godot_v4.7.2-stable_linux.x86_64" \
+            --headless --path . \
+            --export-release "Windows Desktop" "$GITHUB_WORKSPACE/build/windows/jeremy.exe"
+          test -s build/windows/jeremy.exe
+          if [ -f build/windows/jeremy.pck ]; then
+            echo "Export produced a separate .pck. Set binary_format/embed_pck=true in export_presets.cfg." >&2
+            exit 1
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jeremy-windows
+          path: build/windows/jeremy.exe
+          if-no-files-found: error
+
+      - name: Move latest tag
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa latest -m "latest automated build" "$GITHUB_SHA"
+          git push origin refs/tags/latest --force
+
+      - name: Publish latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          target_commitish: ${{ github.sha }}
+          name: jeremy (latest)
+          body: |
+            Automatic single-file Windows build from `${{ github.sha }}`.
+
+            Download: https://github.com/${{ github.repository }}/releases/latest/download/jeremy.exe
+          files: build/windows/jeremy.exe
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: true
