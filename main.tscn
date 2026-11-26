@@ -19,8 +19,7 @@ gravity_scale = 0.0
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="RigidBody2D" unique_id=118662104]
 texture_filter = 1
 sprite_frames = ExtResource("2_h2yge")
-animation = &"walking"
-frame_progress = 0.58482236
+animation = &"default"
 metadata/_aseprite_wizard_interface_config_ = {
 "pending_changes": {}
 }
@@ -34,10 +33,10 @@ metadata/_aseprite_wizard_config_ = {
 "scale": "1.0",
 "should_round_fps": true,
 "slice": "",
-"source": "C:/Users/veroteknik/Downloads/jeremy.aseprite",
+"source": "res://jeremy.aseprite",
 "source_uid": -1
 }
-metadata/_aseprite_wizard_source_file_hash_ = "459640e97642b9caf6101b5b006895d9"
+metadata/_aseprite_wizard_source_file_hash_ = "a7b475849c46bc76e550866b5c27b612"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="RigidBody2D" unique_id=2098290099]
 position = Vector2(0, -2)
