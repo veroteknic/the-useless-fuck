@@ -2,7 +2,13 @@
 
 A tiny desktop pet for Windows, built with Godot 4.7.2.
 
-Drag him around, click to talk, or right-click while a browser is focused if you feel like losing a tab.
+Jeremy wanders and hops around on his own.
+
+- Left-click: he says something.
+- Left-drag and release: throw him.
+- Right-click while a browser is focused: he eats that tab.
+
+Animations are separated in `jeremy_sprite_frames.tres`. Optional animations named `jumping` and `eating` are picked up automatically when added.
 
 ## Download
 
