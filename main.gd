@@ -11,6 +11,7 @@ const PET_RADIUS := 60.0
 const PET_LOCAL_POSITION := Vector2(200, 240)
 const DRAG_MOVE_THRESHOLD := 6.0
 const EAT_ANIMATION := "eating"
+const JUMP_ANIMATION := "jumping"
 
 @export var gravity := 1600.0
 @export var bounce := 0.55
@@ -20,6 +21,17 @@ const EAT_ANIMATION := "eating"
 @export var settling_threshold := 60.0
 @export var chatter_interval_min := 7.0
 @export var chatter_interval_max := 16.0
+@export var walk_speed := 75.0
+@export var walk_duration_min := 1.5
+@export var walk_duration_max := 4.0
+@export var walk_pause_min := 2.0
+@export var walk_pause_max := 6.0
+@export var jump_interval_min := 6.0
+@export var jump_interval_max := 14.0
+@export var jump_speed_min := 980.0
+@export var jump_speed_max := 1150.0
+@export var jump_horizontal_min := 90.0
+@export var jump_horizontal_max := 180.0
 
 var desktop_position := Vector2.ZERO
 var velocity := Vector2.ZERO
@@ -37,6 +49,12 @@ var drag_moved := false
 var velocity_before_drag := Vector2.ZERO
 var grounded_before_drag := false
 var airborne_before_drag := false
+var walking_before_drag := false
+var walk_direction_before_drag := 1.0
+var walk_timer_before_drag := 0.0
+var walk_pause_timer_before_drag := 0.0
+var jump_timer_before_drag := 0.0
+var self_jump_before_drag := false
 
 var grounded := false
 var airborne := true
@@ -45,6 +63,12 @@ var chattering := false
 var speaking := false
 var eating := false
 var chatter_timer := 0.0
+var walking := false
+var walk_direction := 1.0
+var walk_timer := 0.0
+var walk_pause_timer := 0.0
+var jump_timer := 0.0
+var self_jump := false
 
 var tab_layer: CanvasLayer
 var tab_visual: PanelContainer
@@ -102,6 +126,8 @@ func _ready() -> void:
 	sprite.animation_finished.connect(_on_animation_finished)
 
 	reset_chatter_timer()
+	reset_walk_pause_timer()
+	reset_jump_timer()
 	play_animation("default")
 
 	update_window_position()
@@ -183,10 +209,7 @@ func handle_physics(delta: float) -> void:
 	if grounded:
 		desktop_position.y = desktop_max.y
 		velocity.y = 0.0
-		velocity.x = move_toward(velocity.x, 0.0, 1200.0 * delta)
-
-		if absf(velocity.x) < 1.0:
-			velocity.x = 0.0
+		handle_ground_movement(delta)
 
 		airborne = false
 		return
@@ -217,7 +240,7 @@ func handle_physics(delta: float) -> void:
 
 		desktop_position.y = desktop_max.y
 
-		if impact_speed >= landing_threshold:
+		if impact_speed >= landing_threshold and not self_jump:
 			# Remember the hard impact, but keep bouncing. The celebration
 			# fires only when this fall finally settles on the floor.
 			start_celebration()
@@ -226,6 +249,10 @@ func handle_physics(delta: float) -> void:
 			velocity.y = 0.0
 			grounded = true
 			airborne = false
+			walking = false
+			self_jump = false
+			reset_walk_pause_timer()
+			reset_jump_timer()
 
 			if celebrating and sprite.animation != "thumbs up!":
 				speak("say_random_landing")
@@ -234,6 +261,109 @@ func handle_physics(delta: float) -> void:
 			velocity.y = -impact_speed * bounce
 			grounded = false
 			airborne = true
+
+
+func handle_ground_movement(delta: float) -> void:
+	jump_timer -= delta
+
+	if jump_timer <= 0.0:
+		if can_start_jump():
+			start_jump()
+			return
+
+		reset_jump_timer()
+
+	if walking:
+		velocity.x = walk_direction * walk_speed
+		desktop_position.x += velocity.x * delta
+
+		# Turn around instead of walking off the desktop.
+		if desktop_position.x <= desktop_min.x:
+			desktop_position.x = desktop_min.x
+			walk_direction = 1.0
+		elif desktop_position.x >= desktop_max.x:
+			desktop_position.x = desktop_max.x
+			walk_direction = -1.0
+
+		sprite.flip_h = walk_direction < 0.0
+
+		walk_timer -= delta
+		if walk_timer <= 0.0:
+			stop_walking()
+		return
+
+	velocity.x = move_toward(velocity.x, 0.0, 1200.0 * delta)
+
+	if absf(velocity.x) < 1.0:
+		velocity.x = 0.0
+
+	desktop_position.x += velocity.x * delta
+
+	# Landed slides still need to respect the screen edges.
+	if desktop_position.x < desktop_min.x:
+		desktop_position.x = desktop_min.x
+		velocity.x = 0.0
+	elif desktop_position.x > desktop_max.x:
+		desktop_position.x = desktop_max.x
+		velocity.x = 0.0
+
+	walk_pause_timer -= delta
+	if walk_pause_timer <= 0.0 and not dragging and not eating:
+		start_walking()
+
+
+func start_walking() -> void:
+	if not grounded or dragging or eating or celebrating or speaking or chattering:
+		return
+
+	walking = true
+	walk_direction = [-1.0, 1.0].pick_random()
+	walk_timer = randf_range(walk_duration_min, walk_duration_max)
+	velocity.x = walk_direction * walk_speed
+	sprite.flip_h = walk_direction < 0.0
+
+
+func stop_walking() -> void:
+	walking = false
+	velocity.x = 0.0
+	reset_walk_pause_timer()
+
+
+func reset_walk_pause_timer() -> void:
+	walk_pause_timer = randf_range(walk_pause_min, walk_pause_max)
+
+
+func reset_jump_timer() -> void:
+	jump_timer = randf_range(jump_interval_min, jump_interval_max)
+
+
+func can_start_jump() -> bool:
+	return (
+		grounded
+		and not dragging
+		and not eating
+		and not celebrating
+		and not speaking
+		and not chattering
+	)
+
+
+func start_jump() -> void:
+	if not can_start_jump():
+		return
+
+	walking = false
+	grounded = false
+	airborne = true
+	self_jump = true
+
+	var direction: float = [-1.0, 1.0].pick_random()
+	velocity.x = direction * randf_range(jump_horizontal_min, jump_horizontal_max)
+	velocity.y = -randf_range(jump_speed_min, jump_speed_max)
+	sprite.flip_h = velocity.x < 0.0
+
+	reset_jump_timer()
+	reset_walk_pause_timer()
 
 
 func _on_body_input_event(
@@ -258,6 +388,12 @@ func start_dragging() -> void:
 	velocity_before_drag = velocity
 	grounded_before_drag = grounded
 	airborne_before_drag = airborne
+	walking_before_drag = walking
+	walk_direction_before_drag = walk_direction
+	walk_timer_before_drag = walk_timer
+	walk_pause_timer_before_drag = walk_pause_timer
+	jump_timer_before_drag = jump_timer
+	self_jump_before_drag = self_jump
 
 	drag_velocity = Vector2.ZERO
 
@@ -281,6 +417,8 @@ func handle_dragging(delta: float) -> void:
 		drag_moved = true
 		grounded = false
 		airborne = false
+		walking = false
+		self_jump = false
 		celebrating = false
 		chattering = false
 		speaking = false
@@ -305,6 +443,12 @@ func stop_dragging() -> void:
 		velocity = velocity_before_drag
 		grounded = grounded_before_drag
 		airborne = airborne_before_drag
+		walking = walking_before_drag
+		walk_direction = walk_direction_before_drag
+		walk_timer = walk_timer_before_drag
+		walk_pause_timer = walk_pause_timer_before_drag
+		jump_timer = jump_timer_before_drag
+		self_jump = self_jump_before_drag
 		speak("say_random_click")
 		return
 
@@ -314,6 +458,8 @@ func stop_dragging() -> void:
 
 	grounded = false
 	airborne = true
+	walking = false
+	self_jump = false
 	celebrating = false
 	chattering = false
 	speaking = false
@@ -341,12 +487,21 @@ func update_animation(delta: float) -> void:
 		return
 
 	if airborne:
-		play_animation("falling")
+		# A drawn "jumping" animation is optional; until it exists, the
+		# existing falling frame covers the whole hop.
+		if (
+			velocity.y < 0.0
+			and sprite.sprite_frames != null
+			and sprite.sprite_frames.has_animation(JUMP_ANIMATION)
+		):
+			play_animation(JUMP_ANIMATION)
+		else:
+			play_animation("falling")
 		return
 
 	if grounded:
 		# Any spoken line uses the one-frame mouth-open animation. The
-		# latch keeps default from overwriting it before it finishes.
+		# latch keeps default/walking from overwriting it before it finishes.
 		if speaking:
 			play_animation("talkin")
 			return
@@ -359,8 +514,13 @@ func update_animation(delta: float) -> void:
 		if chatter_timer <= 0.0:
 			chattering = true
 			speak("say_random_idle")
-		else:
-			play_animation("default")
+			return
+
+		if walking:
+			play_animation("walking")
+			return
+
+		play_animation("default")
 
 
 func speak(method: String) -> void:
@@ -369,6 +529,7 @@ func speak(method: String) -> void:
 	# priority, and a celebration must not be interrupted.
 	if grounded and not dragging and not celebrating:
 		speaking = true
+		walking = false
 
 
 func play_animation(animation_name: String) -> void:
@@ -400,6 +561,8 @@ func start_celebration() -> void:
 		return
 
 	celebrating = true
+	walking = false
+	reset_jump_timer()
 	chattering = false
 	speaking = false
 
@@ -485,6 +648,8 @@ func steal_tab() -> void:
 	)
 
 	eating = true
+	walking = false
+	velocity.x = 0.0
 	_play_eat_animation()
 	_animate_tab_eaten(tab_screen_position - window_position)
 	dialogue.call("say", "mine now.", 2.0)
@@ -499,8 +664,12 @@ func steal_tab() -> void:
 	# Hand the sprite back to the normal state machine.
 	if dragging and drag_moved:
 		play_animation("flailing")
+	elif airborne and velocity.y < 0.0 and sprite.sprite_frames != null and sprite.sprite_frames.has_animation(JUMP_ANIMATION):
+		play_animation(JUMP_ANIMATION)
 	elif airborne:
 		play_animation("falling")
+	elif celebrating:
+		play_animation("thumbs up!")
 	elif grounded:
 		play_animation("default")
 
