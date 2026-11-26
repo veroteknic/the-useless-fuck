@@ -33,8 +33,8 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/godot
-            ${{ runner.temp }}/godot-templates
-          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64-v1
+            ~/.local/share/godot/export_templates/4.7.2.stable
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64-v2
 
       - name: Install Godot and export templates
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}"
           godot_bin="$RUNNER_TEMP/godot/Godot_v4.7.2-stable_linux.x86_64"
-          templates_dir="$RUNNER_TEMP/godot-templates/4.7.2.stable"
+          templates_dir="$HOME/.local/share/godot/export_templates/4.7.2.stable"
 
           mkdir -p "$RUNNER_TEMP/godot" "$RUNNER_TEMP/dl"
           curl -fsSL "$base/Godot_v4.7.2-stable_linux.x86_64.zip" -o "$RUNNER_TEMP/dl/godot.zip"
