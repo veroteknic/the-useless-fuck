@@ -55,6 +55,7 @@ var walk_timer_before_drag := 0.0
 var walk_pause_timer_before_drag := 0.0
 var jump_timer_before_drag := 0.0
 var self_jump_before_drag := false
+var jump_launch_before_drag := false
 
 var grounded := false
 var airborne := true
@@ -69,6 +70,7 @@ var walk_timer := 0.0
 var walk_pause_timer := 0.0
 var jump_timer := 0.0
 var self_jump := false
+var jump_launch := false
 
 var tab_layer: CanvasLayer
 var tab_visual: PanelContainer
@@ -239,6 +241,7 @@ func handle_physics(delta: float) -> void:
 		var impact_speed := maxf(velocity.y, 0.0)
 
 		desktop_position.y = desktop_max.y
+		jump_launch = false
 
 		if impact_speed >= landing_threshold and not self_jump:
 			# Remember the hard impact, but keep bouncing. The celebration
@@ -356,6 +359,7 @@ func start_jump() -> void:
 	grounded = false
 	airborne = true
 	self_jump = true
+	jump_launch = true
 
 	var direction: float = [-1.0, 1.0].pick_random()
 	velocity.x = direction * randf_range(jump_horizontal_min, jump_horizontal_max)
@@ -394,6 +398,7 @@ func start_dragging() -> void:
 	walk_pause_timer_before_drag = walk_pause_timer
 	jump_timer_before_drag = jump_timer
 	self_jump_before_drag = self_jump
+	jump_launch_before_drag = jump_launch
 
 	drag_velocity = Vector2.ZERO
 
@@ -419,6 +424,7 @@ func handle_dragging(delta: float) -> void:
 		airborne = false
 		walking = false
 		self_jump = false
+		jump_launch = false
 		celebrating = false
 		chattering = false
 		speaking = false
@@ -449,6 +455,7 @@ func stop_dragging() -> void:
 		walk_pause_timer = walk_pause_timer_before_drag
 		jump_timer = jump_timer_before_drag
 		self_jump = self_jump_before_drag
+		jump_launch = jump_launch_before_drag
 		speak("say_random_click")
 		return
 
@@ -460,6 +467,7 @@ func stop_dragging() -> void:
 	airborne = true
 	walking = false
 	self_jump = false
+	jump_launch = false
 	celebrating = false
 	chattering = false
 	speaking = false
@@ -490,7 +498,8 @@ func update_animation(delta: float) -> void:
 		# A drawn "jumping" animation is optional; until it exists, the
 		# existing falling frame covers the whole hop.
 		if (
-			velocity.y < 0.0
+			jump_launch
+			and velocity.y < 0.0
 			and sprite.sprite_frames != null
 			and sprite.sprite_frames.has_animation(JUMP_ANIMATION)
 		):
@@ -649,6 +658,7 @@ func steal_tab() -> void:
 
 	eating = true
 	walking = false
+	jump_launch = false
 	velocity.x = 0.0
 	_play_eat_animation()
 	_animate_tab_eaten(tab_screen_position - window_position)
@@ -664,7 +674,7 @@ func steal_tab() -> void:
 	# Hand the sprite back to the normal state machine.
 	if dragging and drag_moved:
 		play_animation("flailing")
-	elif airborne and velocity.y < 0.0 and sprite.sprite_frames != null and sprite.sprite_frames.has_animation(JUMP_ANIMATION):
+	elif airborne and jump_launch and velocity.y < 0.0 and sprite.sprite_frames != null and sprite.sprite_frames.has_animation(JUMP_ANIMATION):
 		play_animation(JUMP_ANIMATION)
 	elif airborne:
 		play_animation("falling")
