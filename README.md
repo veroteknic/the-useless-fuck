@@ -8,7 +8,7 @@ Jeremy wanders and hops around on his own.
 - Left-drag and release: throw him.
 - Right-click while a browser is focused: he eats that tab.
 
-Animations are separated in `jeremy_sprite_frames.tres`. Optional animations named `jumping` and `eating` are picked up automatically when added.
+Animations are separated in `jeremy_sprite_frames.tres`. Optional animations named `jumping` and `eating` are picked up automatically when added. The editable art source is included as `jeremy.aseprite`.
 
 ## Download
 
