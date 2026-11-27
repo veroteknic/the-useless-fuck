@@ -9,6 +9,35 @@ var bubble_timer: Timer
 # in that category has been used once.
 var line_decks := {}
 
+var custom_lines: Array[String] = []
+var _custom_lines_loaded := false
+
+var stubborn_lines := [
+	"nope.",
+	"i'm comfortable.",
+	"ask me again.",
+	"i said no.",
+	"not moving.",
+	"you can wait.",
+	"i'm thinking about it.",
+	"this is my spot.",
+	"very rude.",
+	"fine, but i'm telling everyone.",
+]
+
+var note_read_lines := [
+	"you read it.",
+	"i knew you would.",
+	"that one was for you.",
+	"don't judge the handwriting.",
+	"take a moment. i wrote that.",
+	"yes, i can spell.",
+	"you're welcome.",
+	"put it back.",
+	"i'll write another.",
+	"nothing to see here.",
+]
+
 var idle_lines := [
 	"hey.",
 	"you're back.",
@@ -880,6 +909,55 @@ func _draw_line(category: String, lines: Array) -> String:
 
 	var deck: Array = line_decks[category]
 	return str(deck.pop_back())
+
+
+func _load_custom_dialogue() -> Array[String]:
+	if _custom_lines_loaded:
+		return custom_lines
+
+	_custom_lines_loaded = true
+
+	var path := ProjectSettings.globalize_path("user://jeremy_custom_dialogue.txt")
+	if not FileAccess.file_exists(path):
+		return custom_lines
+
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return custom_lines
+
+	var content := file.get_as_text()
+	file.close()
+
+	for raw_line in content.split("\n", false):
+		var line := str(raw_line).strip_edges()
+
+		if line.is_empty() or line.begins_with("#"):
+			continue
+
+		if line.length() > 120:
+			line = line.substr(0, 120)
+
+		custom_lines.append(line)
+
+	return custom_lines
+
+
+func say_random_custom() -> void:
+	var lines := _load_custom_dialogue()
+
+	if lines.is_empty():
+		say(_draw_line("idle", idle_lines))
+		return
+
+	say(_draw_line("custom", lines))
+
+
+func say_random_stubborn() -> void:
+	say(_draw_line("stubborn", stubborn_lines))
+
+
+func say_random_note_read() -> void:
+	say(_draw_line("note_read", note_read_lines))
 
 
 func say_random_idle() -> void:

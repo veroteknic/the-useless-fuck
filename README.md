@@ -17,6 +17,21 @@ Animations are separated in `jeremy_sprite_frames.tres`: `default`, `talkin`, `t
 
 Jeremy uses the bounds of whichever monitor he is currently on, so he does not fall into the empty space below a shorter secondary display.
 
+### Jeremy's mood and your content
+
+- Jeremy keeps a small **mood meter** (`annoyed` → `pleased`) that reacts to being dragged, cursor grabs, eaten tabs, and you reading his notes. It is stored in `user://jeremy_mood.cfg`; a missing or corrupt file simply resets to neutral.
+- **Stubborn flail**: occasionally he resists being dragged for a moment, using his existing `flailing` animation. This never locks him in place.
+- **Note reaction**: when you focus one of his Notepad windows briefly, he notices. He only closes the note if its text is unchanged, so your edits are never lost.
+- Right-click menu has toggles and sliders for pause, mischief, individual gags, mood-relevant settings, and user content.
+
+You can add your own content without changing the game:
+
+- `user://jeremy_custom_notes.txt` — one note line per line; `#` starts a comment.
+- `user://jeremy_custom_dialogue.txt` — one speech line per line; `#` starts a comment.
+- `user://jeremy_popins/` — PNG/JPG/JPEG/WEBP images shown briefly near Jeremy. Nothing is bundled or copied from another character or game.
+
+On Windows these live under `%APPDATA%\Godot\app_userdata\the useless fuck\`.
+
 Dust puffs appear exactly where Jeremy's collision circle touches the screen: left, right, top, or bottom. Walking and jumping kick up a little dust from the bottom contact point. Eating a tab throws crumbs from a random contact point. Particles can be turned off with `particles_enabled` on the root script.
 
 ## Download

@@ -10,15 +10,23 @@ extends Node
 @export var note_interval_min := 28.0
 @export var note_interval_max := 60.0
 @export var restore_previous_focus := true
+@export var allow_custom_notes := true
+@export_range(0.0, 1.0, 0.05) var custom_content_chance := 0.35
 
 const NOTE_DIR_NAME := "jeremy_notes"
 const NOTE_WINDOW_SIZE := Vector2i(380, 230)
 const LAUNCH_SCRIPT_NAME := "jeremy_open_notepad.ps1"
 const CLOSE_SCRIPT_NAME := "jeremy_close_notepad.ps1"
+const READ_SCRIPT_NAME := "jeremy_note_watch.ps1"
+const READ_MARKER_NAME := "jeremy_note_read_%d.txt"
 
 var notes: Array[Dictionary] = []
 var next_note_timer := 0.0
 var next_note_number := 1
+var note_read_callback := Callable()
+
+var _custom_note_lines: Array[String] = []
+var _custom_lines_loaded := false
 
 var note_lines := [
 	"note to self: the floor is friendly.",
@@ -140,6 +148,7 @@ func _process(delta: float) -> void:
 		reset_note_timer()
 
 	_poll_note_info(delta)
+	_poll_read_markers()
 
 	if note_lifetime <= 0.0:
 		return
@@ -167,6 +176,8 @@ func write_note(message: String = "") -> void:
 	var file_path := _write_note_file(text, note_id)
 	if file_path.is_empty():
 		return
+
+	var expected_text := _read_note_text(file_path)
 
 	var hint := Vector2(DisplayServer.mouse_get_position())
 	var position := _random_note_position(NOTE_WINDOW_SIZE, hint)
@@ -197,6 +208,8 @@ func write_note(message: String = "") -> void:
 	notes.append({
 		"file": file_path,
 		"info_file": info_file,
+		"note_id": note_id,
+		"expected_text": expected_text,
 		"pid": -1,
 		"hwnd": 0,
 		"remaining": note_lifetime,
@@ -255,6 +268,7 @@ func _poll_note_info(delta: float) -> void:
 					entry["hwnd"] = int(info.get("hwnd", "0"))
 					entry["info_pending"] = false
 					DirAccess.remove_absolute(info_file)
+					_start_read_watch(entry)
 					continue
 
 		var wait := float(entry.get("info_wait", 0.0)) - delta
@@ -264,6 +278,114 @@ func _poll_note_info(delta: float) -> void:
 			entry["info_pending"] = false
 			if FileAccess.file_exists(info_file):
 				DirAccess.remove_absolute(info_file)
+
+
+func _poll_read_markers() -> void:
+	var ready_entries: Array[Dictionary] = []
+
+	for entry in notes:
+		var marker := str(entry.get("read_marker", ""))
+		if marker.is_empty() or not FileAccess.file_exists(marker):
+			continue
+
+		DirAccess.remove_absolute(marker)
+		entry["read_marker"] = ""
+		ready_entries.append(entry)
+
+	for entry in ready_entries:
+		_on_note_read(entry)
+
+
+func _start_read_watch(entry: Dictionary) -> void:
+	var hwnd := int(entry.get("hwnd", 0))
+	if hwnd == 0:
+		return
+
+	var note_id := int(entry.get("note_id", 0))
+	var marker := _user_path(READ_MARKER_NAME % note_id)
+
+	if FileAccess.file_exists(marker):
+		DirAccess.remove_absolute(marker)
+
+	var script_path := _write_user_script(READ_SCRIPT_NAME, read_watch_ps)
+	if script_path.is_empty():
+		return
+
+	entry["read_marker"] = marker
+
+	OS.create_process("powershell.exe", PackedStringArray([
+		"-NoProfile",
+		"-File",
+		script_path,
+		str(hwnd),
+		marker,
+		"1200",
+		"45000"
+	]), false)
+
+
+func _on_note_read(entry: Dictionary) -> void:
+	var text := str(entry.get("expected_text", ""))
+
+	if note_read_callback.is_valid():
+		note_read_callback.call(text, entry)
+
+	# Only close a note Jeremy wrote if the human has not edited it. Unsaved
+	# changes are never touched.
+	if _note_unmodified(entry):
+		_close_note(entry)
+
+
+func _read_note_text(path: String) -> String:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return ""
+
+	var content := file.get_as_text()
+	file.close()
+	return content
+
+
+func _note_unmodified(entry: Dictionary) -> bool:
+	var path := str(entry.get("file", ""))
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return false
+
+	return _read_note_text(path) == str(entry.get("expected_text", ""))
+
+
+func _load_custom_note_lines() -> Array[String]:
+	if _custom_lines_loaded:
+		return _custom_note_lines
+
+	_custom_lines_loaded = true
+
+	if not allow_custom_notes:
+		return _custom_note_lines
+
+	var path := _user_path("jeremy_custom_notes.txt")
+	if not FileAccess.file_exists(path):
+		return _custom_note_lines
+
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return _custom_note_lines
+
+	var content := file.get_as_text()
+	file.close()
+
+	for raw_line in content.split("\n", false):
+		var line := str(raw_line).strip_edges()
+
+		if line.is_empty() or line.begins_with("#"):
+			continue
+
+		if line.length() > 180:
+			line = line.substr(0, 180)
+
+		_custom_note_lines.append(line)
+
+	return _custom_note_lines
 
 
 func _parse_info_text(text: String) -> Dictionary:
@@ -292,6 +414,11 @@ func _write_user_script(file_name: String, script: String) -> String:
 
 
 func _pick_note_text() -> String:
+	var custom_lines := _load_custom_note_lines()
+
+	if not custom_lines.is_empty() and randf() < custom_content_chance:
+		return str(custom_lines.pick_random())
+
 	var date := Time.get_datetime_dict_from_system()
 	var hour := int(date.get("hour", 12))
 
@@ -343,3 +470,29 @@ func _close_note(entry: Dictionary) -> void:
 		script_path,
 		str(hwnd)
 	]), false)
+
+
+var read_watch_ps := "\n".join([
+	"param([long]$Handle, [string]$MarkerFile, [int]$DwellMs, [int]$TimeoutMs)",
+	"Add-Type @\"",
+	"using System;",
+	"using System.Runtime.InteropServices;",
+	"public static class JeremyNoteWatch {",
+	"  [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();",
+	"}",
+	"\"@",
+	"$start = 0",
+	"$deadline = [Environment]::TickCount + $TimeoutMs",
+	"while ([Environment]::TickCount -lt $deadline) {",
+	"  if ([JeremyNoteWatch]::GetForegroundWindow().ToInt64() -eq $Handle) {",
+	"    if ($start -eq 0) { $start = [Environment]::TickCount }",
+	"    if ([Environment]::TickCount - $start -ge $DwellMs) {",
+	"      Set-Content -LiteralPath $MarkerFile -Value \"read;\" -Encoding ASCII",
+	"      break",
+	"    }",
+	"  } else {",
+	"    $start = 0",
+	"  }",
+	"  Start-Sleep -Milliseconds 120",
+	"}"
+])

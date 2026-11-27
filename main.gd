@@ -22,6 +22,10 @@ const CURSOR_SCRIPT_NAME := "jeremy_cursor.ps1"
 const CURSOR_TARGET_NAME := "jeremy_cursor_target.txt"
 const CURSOR_STOP_NAME := "jeremy_cursor_stop.txt"
 const TAB_COUNT_NAME := "jeremy_tabs.cfg"
+const POPIN_DIR_NAME := "jeremy_popins"
+const POPIN_MAX_SIZE := Vector2(220, 180)
+const POPIN_VISIBLE_TIME := 2.6
+const POPIN_FADE_TIME := 0.5
 
 @export var gravity := 1600.0
 @export var bounce := 0.55
@@ -75,6 +79,8 @@ var last_mouse_position := Vector2.ZERO
 var drag_velocity := Vector2.ZERO
 var drag_moved := false
 var drag_release_watchdog := 0.0
+var stubborn_resist := false
+var stubborn_timer := 0.0
 
 var velocity_before_drag := Vector2.ZERO
 var grounded_before_drag := false
@@ -136,6 +142,9 @@ var notepad_manager: Node
 var menu_window: Window
 var behavior_director: Node
 var tabs_eaten := 0
+
+var popin_sprite: Sprite2D
+var popin_timer := 0.0
 
 # Kept as files in user:// because inline PowerShell here-strings lose their
 # quotes when passed through OS.execute's argument list on Windows.
@@ -214,6 +223,7 @@ func _ready() -> void:
 	_setup_window()
 	_setup_physics()
 	_setup_particles()
+	_setup_popin()
 
 	if notepads_enabled:
 		notepad_manager = NotepadManagerScript.new()
@@ -229,6 +239,20 @@ func _ready() -> void:
 		director_config.set("allow_cursor_steal", cursor_steal_enabled)
 		director_config.set("allow_cursor_chase", cursor_chase_enabled)
 		director_config.set("allow_notes", notepads_enabled)
+
+	if notepad_manager != null:
+		notepad_manager.set("note_read_callback", Callable(self, "_on_note_read"))
+		if behavior_director != null:
+			var pet_config = behavior_director.get("config")
+			if pet_config != null:
+				notepad_manager.set(
+					"allow_custom_notes",
+					bool(pet_config.get("allow_custom_content"))
+				)
+				notepad_manager.set(
+					"custom_content_chance",
+					float(pet_config.get("custom_content_chance"))
+				)
 
 	_load_tab_count()
 	reset_cursor_auto_timer()
@@ -267,6 +291,12 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if behavior_director != null:
 		behavior_director.call("tick", delta)
+
+	update_popin(delta)
+
+	if behavior_director != null and bool(behavior_director.call("is_paused")):
+		update_window_position()
+		return
 
 	sync_active_screen()
 
@@ -318,6 +348,101 @@ func _setup_physics() -> void:
 	collision_shape.shape = circle
 
 	sprite.scale = Vector2(SPRITE_BASE_SCALE, SPRITE_BASE_SCALE)
+
+
+func _setup_popin() -> void:
+	# User-supplied images only. Nothing is bundled and nothing is copied from
+	# another character or game.
+	popin_sprite = Sprite2D.new()
+	popin_sprite.name = "UserPopin"
+	popin_sprite.z_index = 20
+	popin_sprite.visible = false
+	add_child(popin_sprite)
+
+
+func update_popin(delta: float) -> void:
+	if popin_sprite == null or not popin_sprite.visible:
+		return
+
+	popin_timer -= delta
+
+	if popin_timer <= 0.0:
+		popin_sprite.visible = false
+		popin_sprite.texture = null
+		return
+
+	if popin_timer < POPIN_FADE_TIME:
+		popin_sprite.modulate.a = clampf(popin_timer / POPIN_FADE_TIME, 0.0, 1.0)
+
+
+func show_random_popin() -> bool:
+	if behavior_director != null:
+		if not bool(behavior_director.call("is_action_allowed", "show_popin")):
+			return false
+
+	var dir_path := ProjectSettings.globalize_path("user://" + POPIN_DIR_NAME)
+	var dir := DirAccess.open(dir_path)
+
+	if dir == null:
+		return false
+
+	var candidates: Array[String] = []
+
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+
+	while file_name != "":
+		if not dir.current_is_dir():
+			var extension := file_name.get_extension().to_lower()
+			if extension == "png" or extension == "jpg" or extension == "jpeg" or extension == "webp":
+				candidates.append(file_name)
+		file_name = dir.get_next()
+
+	dir.list_dir_end()
+
+	if candidates.is_empty():
+		return false
+
+	var chosen_name := str(candidates.pick_random())
+	var full_path := dir_path + "\\" + chosen_name
+	var source := FileAccess.open(full_path, FileAccess.READ)
+
+	if source == null:
+		return false
+
+	var file_size := source.get_length()
+	source.close()
+
+	if file_size > 8 * 1024 * 1024:
+		return false
+
+	var image := Image.load_from_file(full_path)
+
+	if image == null or image.get_width() <= 0 or image.get_height() <= 0:
+		return false
+
+	var texture := ImageTexture.create_from_image(image)
+	var texture_size := texture.get_size()
+	var fit := minf(
+		POPIN_MAX_SIZE.x / maxf(texture_size.x, 1.0),
+		POPIN_MAX_SIZE.y / maxf(texture_size.y, 1.0)
+	)
+	var scale_factor := minf(1.0, fit)
+
+	popin_sprite.texture = texture
+	popin_sprite.scale = Vector2(scale_factor, scale_factor)
+	popin_sprite.position = Vector2(
+		clampf(randf_range(70.0, 330.0), 20.0, 380.0),
+		clampf(PET_LOCAL_POSITION.y + randf_range(-120.0, -40.0), 20.0, 320.0)
+	)
+	popin_sprite.modulate.a = 1.0
+	popin_sprite.visible = true
+	popin_timer = POPIN_VISIBLE_TIME
+
+	if behavior_director != null:
+		behavior_director.call("adjust_mood", 0.08, "popin")
+
+	return true
 
 
 func _setup_particles() -> void:
@@ -873,12 +998,55 @@ func stop_walking() -> void:
 	reset_walk_pause_timer()
 
 
+func get_config_number(key: String, fallback: float) -> float:
+	if behavior_director == null:
+		return fallback
+
+	var pet_config = behavior_director.get("config")
+	if pet_config == null:
+		return fallback
+
+	var value: Variant = pet_config.get(key)
+	if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
+		return float(value)
+
+	return fallback
+
+
+func scaled_interval(
+	min_value: float,
+	max_value: float,
+	frequency_key: String,
+	use_mischief: bool = false
+) -> float:
+	var frequency := get_config_number(frequency_key, 1.0)
+
+	if frequency <= 0.0:
+		return 1.0e9
+
+	if use_mischief:
+		var intensity := get_config_number("mischief_intensity", 1.0)
+		if intensity <= 0.0:
+			return 1.0e9
+		frequency *= minf(intensity, 2.0)
+
+	return randf_range(min_value, max_value) / maxf(frequency, 0.05)
+
+
 func reset_walk_pause_timer() -> void:
-	walk_pause_timer = randf_range(walk_pause_min, walk_pause_max)
+	walk_pause_timer = scaled_interval(
+		walk_pause_min,
+		walk_pause_max,
+		"activity_frequency"
+	)
 
 
 func reset_jump_timer() -> void:
-	jump_timer = randf_range(jump_interval_min, jump_interval_max)
+	jump_timer = scaled_interval(
+		jump_interval_min,
+		jump_interval_max,
+		"activity_frequency"
+	)
 
 
 func can_start_jump() -> bool:
@@ -928,7 +1096,7 @@ func _on_body_input_event(
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			toggle_menu()
 		elif event.button_index == MOUSE_BUTTON_MIDDLE:
-			steal_cursor()
+			request_behavior("steal_cursor")
 
 
 func toggle_menu() -> void:
@@ -960,10 +1128,60 @@ func get_behavior_status() -> Dictionary:
 	return behavior_director.call("get_status") as Dictionary
 
 
+func get_behavior_config() -> Dictionary:
+	if behavior_director == null:
+		return {}
+	return behavior_director.call("get_config_snapshot") as Dictionary
+
+
+func set_behavior_config(key: String, value: Variant) -> bool:
+	if behavior_director == null:
+		return false
+
+	var applied := bool(behavior_director.call("set_config_value", key, value))
+
+	if applied and key == "paused" and bool(value):
+		if cursor_stealing:
+			_stop_cursor_steal()
+		if cursor_chasing:
+			_stop_cursor_chase()
+
+	if applied and notepad_manager != null:
+		if key == "allow_notes":
+			notepad_manager.set("notes_enabled", bool(value))
+		elif key == "allow_custom_content":
+			notepad_manager.set("allow_custom_notes", bool(value))
+		elif key == "custom_content_chance":
+			notepad_manager.set("custom_content_chance", float(value))
+
+	return applied
+
+
+func behavior_allows(action: String) -> bool:
+	if behavior_director == null:
+		return true
+	return bool(behavior_director.call("is_action_allowed", action))
+
+
 func request_behavior(action: String, args: Array = []) -> bool:
 	if behavior_director == null:
 		return false
 	return bool(behavior_director.call("request_behavior", action, args))
+
+
+func _on_note_read(_text: String, _entry: Dictionary) -> void:
+	if behavior_director != null:
+		if not bool(behavior_director.call("is_action_allowed", "note_reaction")):
+			return
+		behavior_director.call("adjust_mood", 0.2, "note_read")
+
+	if dialogue != null and dialogue.has_method("say_random_note_read"):
+		dialogue.call("say_random_note_read")
+	elif dialogue != null and dialogue.has_method("say"):
+		dialogue.call("say", "you read it.", 2.2)
+
+	if behavior_director != null and randf() < 0.35:
+		request_behavior("show_popin")
 
 
 func start_dragging() -> void:
@@ -1021,17 +1239,53 @@ func handle_dragging(delta: float) -> void:
 		chattering = false
 		speaking = false
 		velocity = Vector2.ZERO
-		speak("say_random_grab")
 
-	desktop_position = mouse_position + drag_offset
+		if behavior_director != null and bool(behavior_director.call("roll_stubborn_flail")):
+			start_stubborn_flail()
+
+		if stubborn_resist:
+			speak("say_random_stubborn")
+		else:
+			speak("say_random_grab")
+
+		if behavior_director != null:
+			behavior_director.call(
+				"adjust_mood",
+				-0.24 if stubborn_resist else -0.12,
+				"dragged"
+			)
+
+	var target_position := mouse_position + drag_offset
+
+	if stubborn_resist:
+		stubborn_timer -= delta
+		desktop_position = desktop_position.lerp(target_position, 0.14)
+		if stubborn_timer <= 0.0:
+			stubborn_resist = false
+			if dialogue != null and dialogue.has_method("say"):
+				dialogue.call("say", "fine.", 1.6)
+	else:
+		desktop_position = target_position
+
 	sync_active_screen()
 	desktop_position.x = clampf(desktop_position.x, desktop_min.x, desktop_max.x)
 	desktop_position.y = clampf(desktop_position.y, desktop_min.y, desktop_max.y)
 
 	if delta > 0.0:
 		drag_velocity = (mouse_position - last_mouse_position) / delta
+		if stubborn_resist:
+			drag_velocity *= 0.25
 
 	last_mouse_position = mouse_position
+
+
+func start_stubborn_flail() -> bool:
+	if not dragging or not drag_moved:
+		return false
+
+	stubborn_resist = true
+	stubborn_timer = maxf(stubborn_timer, 0.45)
+	return true
 
 
 func stop_dragging() -> void:
@@ -1040,6 +1294,8 @@ func stop_dragging() -> void:
 
 	dragging = false
 	drag_release_watchdog = 0.0
+	stubborn_resist = false
+	stubborn_timer = 0.0
 
 	if not drag_moved:
 		velocity = velocity_before_drag
@@ -1122,8 +1378,18 @@ func update_animation(delta: float) -> void:
 
 		if chatter_timer <= 0.0:
 			chattering = true
+			if randf() < 0.08:
+				request_behavior("show_popin")
 			if randf() < context_chatter_chance:
 				speak("say_contextual")
+			elif (
+				randf() < 0.12
+				and behavior_director != null
+				and bool(behavior_director.call("is_action_allowed", "custom_content"))
+				and dialogue != null
+				and dialogue.has_method("say_random_custom")
+			):
+				speak("say_random_custom")
 			else:
 				speak("say_random_idle")
 			return
@@ -1183,9 +1449,10 @@ func start_celebration() -> void:
 
 
 func reset_chatter_timer() -> void:
-	chatter_timer = randf_range(
+	chatter_timer = scaled_interval(
 		chatter_interval_min,
-		chatter_interval_max
+		chatter_interval_max,
+		"dialogue_frequency"
 	)
 
 
@@ -1279,13 +1546,20 @@ func _write_cursor_target() -> void:
 
 
 func reset_cursor_auto_timer() -> void:
-	cursor_auto_timer = randf_range(cursor_steal_auto_min, cursor_steal_auto_max)
+	cursor_auto_timer = scaled_interval(
+		cursor_steal_auto_min,
+		cursor_steal_auto_max,
+		"activity_frequency",
+		true
+	)
 
 
 func reset_cursor_chase_cooldown() -> void:
-	cursor_chase_cooldown = randf_range(
+	cursor_chase_cooldown = scaled_interval(
 		cursor_chase_cooldown_min,
-		cursor_chase_cooldown_max
+		cursor_chase_cooldown_max,
+		"activity_frequency",
+		true
 	)
 
 
@@ -1333,6 +1607,8 @@ func steal_cursor(require_contact: bool = false) -> bool:
 		return false
 
 	speak("say_random_cursor")
+	if behavior_director != null:
+		behavior_director.call("adjust_mood", 0.12, "cursor")
 	return true
 
 
@@ -1353,7 +1629,12 @@ func update_cursor_steal(delta: float) -> void:
 	if cursor_chasing:
 		return
 
-	if not cursor_steal_auto_enabled or not cursor_steal_enabled:
+	if (
+		not cursor_steal_auto_enabled
+		or not cursor_steal_enabled
+		or not behavior_allows("steal_cursor")
+		or not behavior_allows("start_cursor_chase")
+	):
 		return
 
 	cursor_auto_timer -= delta
@@ -1590,6 +1871,9 @@ func _save_tab_count() -> void:
 func _register_eaten_tab() -> void:
 	tabs_eaten += 1
 	_save_tab_count()
+
+	if behavior_director != null:
+		behavior_director.call("adjust_mood", 0.18, "tab")
 
 	if dialogue != null and dialogue.has_method("say_eaten_tab"):
 		dialogue.call("say_eaten_tab", tabs_eaten)

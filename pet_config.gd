@@ -17,6 +17,12 @@ extends Resource
 @export var allow_cursor_chase := true
 @export var allow_tab_eat := true
 @export var allow_notes := true
+@export var allow_drag_resist := true
+@export var allow_note_reactions := true
+@export var allow_popins := true
+@export var allow_custom_content := true
+
+@export_range(0.0, 1.0, 0.05) var custom_content_chance := 0.35
 
 # Personality tendencies. These become selection weights when locomotion and
 # mischief are migrated into concrete behaviours.

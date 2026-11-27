@@ -3,7 +3,7 @@ extends Window
 # A small no-focus window that gives the human direct access to Jeremy's
 # tricks, plus a live readout useful for spotting frozen/stuck states.
 
-const MENU_SIZE := Vector2i(300, 470)
+const MENU_SIZE := Vector2i(340, 760)
 
 var pet: Node
 var status_label: Label
@@ -41,6 +41,33 @@ func _init(pet_node: Node) -> void:
 	_add_button(layout, "write note", _on_write_note_pressed)
 	_add_button(layout, "say something", _on_say_pressed)
 	_add_button(layout, "eat tab", _on_eat_tab_pressed)
+	_add_button(layout, "show pop-in", _on_show_popin_pressed)
+
+	layout.add_child(HSeparator.new())
+
+	var controls_heading := Label.new()
+	controls_heading.text = "controls"
+	controls_heading.add_theme_font_size_override("font_size", 14)
+	layout.add_child(controls_heading)
+
+	var config := {}
+	if pet != null and pet.has_method("get_behavior_config"):
+		config = pet.call("get_behavior_config")
+
+	_add_check(layout, "paused", "paused", bool(config.get("paused", false)))
+	_add_check(layout, "mischief", "mischief_enabled", bool(config.get("mischief_enabled", true)))
+	_add_check(layout, "cursor gags", "allow_cursor_steal", bool(config.get("allow_cursor_steal", true)))
+	_add_check(layout, "cursor chase", "allow_cursor_chase", bool(config.get("allow_cursor_chase", true)))
+	_add_check(layout, "tab eating", "allow_tab_eat", bool(config.get("allow_tab_eat", true)))
+	_add_check(layout, "notes", "allow_notes", bool(config.get("allow_notes", true)))
+	_add_check(layout, "drag resistance", "allow_drag_resist", bool(config.get("allow_drag_resist", true)))
+	_add_check(layout, "note reactions", "allow_note_reactions", bool(config.get("allow_note_reactions", true)))
+	_add_check(layout, "pop-ins", "allow_popins", bool(config.get("allow_popins", true)))
+	_add_check(layout, "custom content", "allow_custom_content", bool(config.get("allow_custom_content", true)))
+
+	_add_slider(layout, "mischief intensity", "mischief_intensity", float(config.get("mischief_intensity", 1.0)))
+	_add_slider(layout, "activity frequency", "activity_frequency", float(config.get("activity_frequency", 1.0)))
+	_add_slider(layout, "dialogue frequency", "dialogue_frequency", float(config.get("dialogue_frequency", 1.0)))
 
 	layout.add_child(HSeparator.new())
 
@@ -100,6 +127,39 @@ func _add_button(parent: Node, text: String, callback: Callable) -> void:
 	parent.add_child(button)
 
 
+func _add_check(parent: Node, text: String, key: String, value: bool) -> void:
+	var check := CheckButton.new()
+	check.text = text
+	check.button_pressed = value
+	check.toggled.connect(_on_config_toggle.bind(key))
+	parent.add_child(check)
+
+
+func _add_slider(parent: Node, text: String, key: String, value: float) -> void:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 12)
+	parent.add_child(label)
+
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 2.0
+	slider.step = 0.05
+	slider.value = value
+	slider.value_changed.connect(_on_config_slider.bind(key))
+	parent.add_child(slider)
+
+
+func _on_config_toggle(value: bool, key: String) -> void:
+	if is_instance_valid(pet) and pet.has_method("set_behavior_config"):
+		pet.call("set_behavior_config", key, value)
+
+
+func _on_config_slider(value: float, key: String) -> void:
+	if is_instance_valid(pet) and pet.has_method("set_behavior_config"):
+		pet.call("set_behavior_config", key, value)
+
+
 func refresh_status() -> void:
 	if status_label == null:
 		return
@@ -117,6 +177,7 @@ func refresh_status() -> void:
 		"behavior: " + str(status.get("active_behavior", "unknown")),
 		"paused: " + str(status.get("paused", false)),
 		"mischief: " + str(status.get("mischief", true)),
+		"mood: " + str(status.get("mood_label", "meh")) + " (" + ("%.2f" % float(status.get("mood", 0.0))) + ")",
 		"grounded: " + str(status.get("grounded", false)),
 		"airborne: " + str(status.get("airborne", false)),
 		"walking: " + str(status.get("walking", false)),
@@ -175,6 +236,10 @@ func _on_say_pressed() -> void:
 
 func _on_eat_tab_pressed() -> void:
 	_pet_request("steal_tab")
+
+
+func _on_show_popin_pressed() -> void:
+	_pet_request("show_popin")
 
 
 func _on_close_pressed() -> void:

@@ -4,13 +4,16 @@ const PetConfigScript = preload("res://pet_config.gd")
 const PetBehaviorScript = preload("res://pet_behavior.gd")
 
 const HISTORY_LIMIT := 24
+const MOOD_FILE := "jeremy_mood.cfg"
 
 const COOLDOWNS := {
 	"steal_cursor": 1.0,
 	"start_cursor_chase": 2.0,
 	"steal_tab": 3.0,
 	"write_note": 2.0,
-	"speak": 0.4
+	"speak": 0.4,
+	"stubborn_flail": 8.0,
+	"show_popin": 18.0
 }
 
 var pet: Node
@@ -22,6 +25,8 @@ var active_state := "idle"
 var previous_state := ""
 var history: Array[Dictionary] = []
 
+var mood := 0.0
+
 
 func _init(p_pet: Node) -> void:
 	pet = p_pet
@@ -32,6 +37,7 @@ func _init(p_pet: Node) -> void:
 
 
 func _ready() -> void:
+	_load_mood()
 	active_state = get_state()
 	previous_state = active_state
 
@@ -39,6 +45,8 @@ func _ready() -> void:
 func tick(delta: float) -> void:
 	for key in cooldowns.keys():
 		cooldowns[key] = maxf(0.0, float(cooldowns[key]) - delta)
+
+	mood = move_toward(mood, 0.0, 0.02 * delta)
 
 	var next_state := get_state()
 	if next_state != active_state:
@@ -71,6 +79,62 @@ func request_behavior(action: String, args: Array = []) -> bool:
 	return dispatched
 
 
+func adjust_mood(amount: float, reason: String = "") -> void:
+	mood = clampf(mood + amount, -1.0, 1.0)
+
+	var event := "mood"
+	if not reason.is_empty():
+		event += ":" + reason
+
+	_record_history(event, {"amount": amount})
+	_save_mood()
+
+
+func get_mood_label() -> String:
+	if mood <= -0.55:
+		return "annoyed"
+	if mood <= -0.2:
+		return "grumpy"
+	if mood < 0.2:
+		return "meh"
+	if mood < 0.55:
+		return "curious"
+	return "pleased"
+
+
+func is_paused() -> bool:
+	return bool(config.get("paused"))
+
+
+func set_config_value(key: String, value: Variant) -> bool:
+	if config == null:
+		return false
+
+	config.set(key, value)
+	return true
+
+
+func roll_stubborn_flail() -> bool:
+	if not is_action_allowed("stubborn_flail"):
+		return false
+
+	if float(cooldowns.get("stubborn_flail", 0.0)) > 0.0:
+		return false
+
+	var chance := 0.18 * float(config.get("stubbornness"))
+	chance *= clampf(float(config.get("mischief_intensity")), 0.0, 2.0)
+
+	if mood <= -0.2:
+		chance *= 1.6
+	elif mood >= 0.55:
+		chance *= 0.6
+
+	chance = clampf(chance, 0.0, 0.75)
+	cooldowns["stubborn_flail"] = float(COOLDOWNS["stubborn_flail"])
+	_record_history("roll:stubborn_flail", {"chance": chance})
+	return randf() < chance
+
+
 func is_action_allowed(action: String) -> bool:
 	var mischief := bool(config.get("mischief_enabled"))
 
@@ -83,6 +147,14 @@ func is_action_allowed(action: String) -> bool:
 			return mischief and bool(config.get("allow_tab_eat"))
 		"write_note":
 			return mischief and bool(config.get("allow_notes"))
+		"stubborn_flail":
+			return mischief and bool(config.get("allow_drag_resist"))
+		"show_popin":
+			return bool(config.get("allow_popins"))
+		"note_reaction":
+			return bool(config.get("allow_note_reactions"))
+		"custom_content":
+			return bool(config.get("allow_custom_content"))
 		"speak":
 			return true
 		_:
@@ -131,6 +203,28 @@ func get_state() -> String:
 	return "idle"
 
 
+func get_config_snapshot() -> Dictionary:
+	if config == null:
+		return {}
+
+	return {
+		"paused": bool(config.get("paused")),
+		"mischief_enabled": bool(config.get("mischief_enabled")),
+		"mischief_intensity": float(config.get("mischief_intensity")),
+		"activity_frequency": float(config.get("activity_frequency")),
+		"dialogue_frequency": float(config.get("dialogue_frequency")),
+		"allow_cursor_steal": bool(config.get("allow_cursor_steal")),
+		"allow_cursor_chase": bool(config.get("allow_cursor_chase")),
+		"allow_tab_eat": bool(config.get("allow_tab_eat")),
+		"allow_notes": bool(config.get("allow_notes")),
+		"allow_drag_resist": bool(config.get("allow_drag_resist")),
+		"allow_note_reactions": bool(config.get("allow_note_reactions")),
+		"allow_popins": bool(config.get("allow_popins")),
+		"allow_custom_content": bool(config.get("allow_custom_content")),
+		"custom_content_chance": float(config.get("custom_content_chance"))
+	}
+
+
 func get_status() -> Dictionary:
 	if pet == null or not is_instance_valid(pet):
 		return {"state": "gone", "active_behavior": "gone"}
@@ -156,6 +250,8 @@ func get_status() -> Dictionary:
 		"notepads": _pet_value("notepad_manager", null) != null,
 		"paused": bool(config.get("paused")),
 		"mischief": bool(config.get("mischief_enabled")),
+		"mood": mood,
+		"mood_label": get_mood_label(),
 		"recent": get_recent_history(3)
 	}
 
@@ -173,6 +269,8 @@ func get_recent_history(limit: int = 5) -> Array[String]:
 func _dispatch(action: String, args: Array) -> bool:
 	match action:
 		"steal_cursor", "start_cursor_chase", "steal_tab":
+			return _call_pet(action, [])
+		"stubborn_flail", "show_popin":
 			return _call_pet(action, [])
 		"speak":
 			if args.is_empty():
@@ -214,6 +312,31 @@ func _write_note(args: Array) -> bool:
 		manager.call("write_note", str(args[0]))
 
 	return true
+
+
+func _mood_path() -> String:
+	return ProjectSettings.globalize_path("user://" + MOOD_FILE)
+
+
+func _save_mood() -> void:
+	var file := ConfigFile.new()
+	file.set_value("mood", "value", mood)
+
+	var error := file.save(_mood_path())
+	if error != OK:
+		push_warning("jeremy could not save mood: " + str(error))
+
+
+func _load_mood() -> void:
+	var file := ConfigFile.new()
+	var error := file.load(_mood_path())
+
+	if error != OK:
+		return
+
+	var value: Variant = file.get_value("mood", "value", 0.0)
+	if typeof(value) == TYPE_FLOAT or typeof(value) == TYPE_INT:
+		mood = clampf(float(value), -1.0, 1.0)
 
 
 func _flag(key: String) -> bool:

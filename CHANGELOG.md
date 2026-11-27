@@ -17,6 +17,11 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 - Only trigger cursor grabs when the pointer actually intersects Jeremy's hitbox.
 - Make the pointer helper DPI-aware so grabs land on the face instead of down/right on scaled displays.
 - Use per-monitor ground and wall bounds so Jeremy does not fall off a shorter secondary display.
+- Add a persistent mood meter that reacts to drags, cursor grabs, eaten tabs, and read notes.
+- Add a brief, non-blocking stubborn flail when Jeremy is dragged.
+- Add note-read reactions that only close unedited Jeremy notes.
+- Add optional user-supplied note lines, dialogue lines, and image pop-ins from `user://`, with no bundled or copied content.
+- Add pause, mischief, gag, content, and frequency controls to the right-click menu.
 - Correct the animation documentation: `jumping` exists; `eating` remains optional.
 
 ## 2026-11-27
