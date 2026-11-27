@@ -77,8 +77,13 @@ var jump_launch := false
 var tab_layer: CanvasLayer
 var tab_visual: PanelContainer
 
+var effects_layer: Node2D
 var dust_particles: CPUParticles2D
 var crumb_particles: CPUParticles2D
+var dust_origin := Vector2.ZERO
+var crumb_origin := Vector2.ZERO
+var dust_origin_set := false
+var crumb_origin_set := false
 
 # Kept as files in user:// because inline PowerShell here-strings lose their
 # quotes when passed through OS.execute's argument list on Windows.
@@ -150,6 +155,7 @@ func _process(delta: float) -> void:
 
 	update_animation(delta)
 	update_window_position()
+	update_particle_positions()
 
 
 func _input(event: InputEvent) -> void:
@@ -188,6 +194,10 @@ func _setup_physics() -> void:
 func _setup_particles() -> void:
 	var particle_texture := _make_particle_texture()
 
+	effects_layer = Node2D.new()
+	effects_layer.name = "Particles"
+	add_child(effects_layer)
+
 	dust_particles = CPUParticles2D.new()
 	dust_particles.name = "DustParticles"
 	dust_particles.texture = particle_texture
@@ -216,7 +226,7 @@ func _setup_particles() -> void:
 	dust_particles.color_ramp = _make_fade_gradient(0.85)
 	dust_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
 	dust_particles.emission_rect_extents = Vector2(18.0, 3.0)
-	add_child(dust_particles)
+	effects_layer.add_child(dust_particles)
 
 	crumb_particles = CPUParticles2D.new()
 	crumb_particles.name = "CrumbParticles"
@@ -244,7 +254,7 @@ func _setup_particles() -> void:
 	crumb_particles.scale_amount_max = 1.5
 	crumb_particles.color = Color("#d9dde3")
 	crumb_particles.color_ramp = _make_fade_gradient(1.0)
-	add_child(crumb_particles)
+	effects_layer.add_child(crumb_particles)
 
 
 func _make_particle_texture() -> ImageTexture:
@@ -266,20 +276,34 @@ func _make_fade_gradient(start_alpha: float) -> Gradient:
 	return gradient
 
 
-func burst_dust(local_position: Vector2) -> void:
+func update_particle_positions() -> void:
+	var window_position := desktop_position - PET_LOCAL_POSITION
+
+	if dust_origin_set and dust_particles != null:
+		dust_particles.position = dust_origin - window_position
+
+	if crumb_origin_set and crumb_particles != null:
+		crumb_particles.position = crumb_origin - window_position
+
+
+func burst_dust(desktop_spawn_position: Vector2) -> void:
 	if not particles_enabled or dust_particles == null:
 		return
 
-	dust_particles.position = local_position
+	dust_origin = desktop_spawn_position
+	dust_origin_set = true
+	dust_particles.position = dust_origin - (desktop_position - PET_LOCAL_POSITION)
 	dust_particles.restart()
 	dust_particles.emitting = true
 
 
-func burst_crumbs(local_position: Vector2) -> void:
+func burst_crumbs(desktop_spawn_position: Vector2) -> void:
 	if not particles_enabled or crumb_particles == null:
 		return
 
-	crumb_particles.position = local_position
+	crumb_origin = desktop_spawn_position
+	crumb_origin_set = true
+	crumb_particles.position = crumb_origin - (desktop_position - PET_LOCAL_POSITION)
 	crumb_particles.restart()
 	crumb_particles.emitting = true
 
@@ -349,7 +373,7 @@ func handle_physics(delta: float) -> void:
 		jump_launch = false
 
 		if impact_speed > settling_threshold:
-			burst_dust(PET_LOCAL_POSITION + Vector2(0, 56.0))
+			burst_dust(desktop_position + Vector2(0, 56.0))
 
 		if impact_speed >= landing_threshold and not self_jump:
 			# Remember the hard impact, but keep bouncing. The celebration
@@ -400,7 +424,7 @@ func handle_ground_movement(delta: float) -> void:
 
 		walk_dust_timer -= delta
 		if walk_dust_timer <= 0.0:
-			burst_dust(PET_LOCAL_POSITION + Vector2(0, 56.0))
+			burst_dust(desktop_position + Vector2(0, 56.0))
 			walk_dust_timer = 0.6
 
 		walk_timer -= delta
@@ -480,7 +504,7 @@ func start_jump() -> void:
 	velocity.y = -randf_range(jump_speed_min, jump_speed_max)
 	sprite.flip_h = velocity.x < 0.0
 
-	burst_dust(PET_LOCAL_POSITION + Vector2(0, 56.0))
+	burst_dust(desktop_position + Vector2(0, 56.0))
 
 	reset_jump_timer()
 	reset_walk_pause_timer()
@@ -783,7 +807,7 @@ func steal_tab() -> void:
 	# Let the visual tab reach his mouth before the real tab goes away.
 	await get_tree().create_timer(0.45).timeout
 	_close_active_tab()
-	burst_crumbs(PET_LOCAL_POSITION + Vector2(0, -12.0))
+	burst_crumbs(desktop_position + Vector2(0, -12.0))
 
 	await get_tree().create_timer(0.25).timeout
 	eating = false
