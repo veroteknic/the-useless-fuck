@@ -1,5 +1,7 @@
 extends Window
 
+const PixelUIScript = preload("res://pixel_ui.gd")
+
 # A small no-focus window that gives the human direct access to Jeremy's
 # tricks, plus a live readout useful for spotting frozen/stuck states.
 
@@ -31,7 +33,7 @@ func _init(pet_node: Node) -> void:
 
 	var heading := Label.new()
 	heading.text = "jeremy // menu"
-	heading.add_theme_font_size_override("font_size", 18)
+	PixelUIScript.apply(heading, 16, true)
 	layout.add_child(heading)
 
 	layout.add_child(HSeparator.new())
@@ -47,7 +49,7 @@ func _init(pet_node: Node) -> void:
 
 	var controls_heading := Label.new()
 	controls_heading.text = "controls"
-	controls_heading.add_theme_font_size_override("font_size", 14)
+	PixelUIScript.apply(controls_heading, 12, true)
 	layout.add_child(controls_heading)
 
 	var config := {}
@@ -73,13 +75,13 @@ func _init(pet_node: Node) -> void:
 
 	var status_heading := Label.new()
 	status_heading.text = "status"
-	status_heading.add_theme_font_size_override("font_size", 14)
+	PixelUIScript.apply(status_heading, 12, true)
 	layout.add_child(status_heading)
 
 	status_label = Label.new()
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	status_label.add_theme_font_size_override("font_size", 12)
+	PixelUIScript.apply(status_label, 10)
 	status_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_child(status_label)
 
@@ -123,6 +125,7 @@ func place_near(point: Vector2) -> void:
 func _add_button(parent: Node, text: String, callback: Callable) -> void:
 	var button := Button.new()
 	button.text = text
+	PixelUIScript.apply(button, 11)
 	button.pressed.connect(callback)
 	parent.add_child(button)
 
@@ -130,6 +133,7 @@ func _add_button(parent: Node, text: String, callback: Callable) -> void:
 func _add_check(parent: Node, text: String, key: String, value: bool) -> void:
 	var check := CheckButton.new()
 	check.text = text
+	PixelUIScript.apply(check, 10)
 	check.button_pressed = value
 	check.toggled.connect(_on_config_toggle.bind(key))
 	parent.add_child(check)
@@ -138,7 +142,7 @@ func _add_check(parent: Node, text: String, key: String, value: bool) -> void:
 func _add_slider(parent: Node, text: String, key: String, value: float) -> void:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 12)
+	PixelUIScript.apply(label, 10)
 	parent.add_child(label)
 
 	var slider := HSlider.new()

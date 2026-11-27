@@ -3,6 +3,7 @@ extends Node2D
 const NotepadManagerScript = preload("res://notepad_manager.gd")
 const JeremyMenuScript = preload("res://jeremy_menu.gd")
 const BehaviorDirectorScript = preload("res://behavior_director.gd")
+const PixelUIScript = preload("res://pixel_ui.gd")
 
 @onready var camera: Camera2D = $Camera2D
 @onready var body: RigidBody2D = $RigidBody2D
@@ -1919,6 +1920,7 @@ func _animate_tab_eaten(from_viewport: Vector2) -> void:
 
 		var label := Label.new()
 		label.text = "tab"
+		PixelUIScript.apply(label, 10, true)
 		label.add_theme_color_override("font_color", Color("#242424"))
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		tab_visual.add_child(label)

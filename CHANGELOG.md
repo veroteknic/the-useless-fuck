@@ -23,6 +23,7 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 - Add optional user-supplied note lines, dialogue lines, and image pop-ins from `user://`, with no bundled or copied content.
 - Add pause, mischief, gag, content, and frequency controls to the right-click menu.
 - Correct the animation documentation: `jumping` exists; `eating` remains optional.
+- Switch Jeremy's speech bubble, menu, and tab gag to an embedded Silkscreen pixel font with crisp, unantialiased rendering.
 
 ## 2026-11-27
 

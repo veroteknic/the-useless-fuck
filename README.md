@@ -15,6 +15,8 @@ Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling,
 
 Animations are separated in `jeremy_sprite_frames.tres`: `default`, `talkin`, `thumbs up!`, `flailing`, `falling`, `walking`, and `jumping`. An optional `eating` frame would be picked up automatically if added later. The editable art source is included as `jeremy.aseprite`.
 
+Jeremy's speech bubble, menu, and tab gag use an embedded Silkscreen pixel font, so they stay chunky and readable in the self-contained exe. The font is licensed under the SIL Open Font License 1.1; its notice is included at `assets/fonts/OFL.txt`. Notepad notes remain real Notepad windows and use Notepad's own font.
+
 Jeremy uses the bounds of whichever monitor he is currently on, so he does not fall into the empty space below a shorter secondary display.
 
 ### Jeremy's mood and your content

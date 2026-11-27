@@ -1,6 +1,8 @@
 
 extends CanvasLayer
 
+const PixelUIScript = preload("res://pixel_ui.gd")
+
 var bubble_panel: PanelContainer
 var bubble_text: Label
 var bubble_timer: Timer
@@ -848,25 +850,27 @@ func create_interface() -> void:
 
 	# SPEECH BUBBLE
 	bubble_panel = PanelContainer.new()
-	bubble_panel.position = Vector2(100, 8)
-	bubble_panel.size = Vector2(190, 64)
-	bubble_panel.custom_minimum_size = Vector2(190, 64)
+	bubble_panel.position = Vector2(80, 8)
+	bubble_panel.size = Vector2(240, 76)
+	bubble_panel.custom_minimum_size = Vector2(240, 76)
 	bubble_panel.visible = false
 	bubble_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var bubble_style := StyleBoxFlat.new()
 	bubble_style.bg_color = Color("#f2eee5")
-	bubble_style.set_corner_radius_all(10)
-	bubble_style.content_margin_left = 12.0
-	bubble_style.content_margin_right = 12.0
-	bubble_style.content_margin_top = 8.0
-	bubble_style.content_margin_bottom = 8.0
+	bubble_style.set_corner_radius_all(0)
+	bubble_style.set_border_width_all(2)
+	bubble_style.border_color = Color("#242424")
+	bubble_style.content_margin_left = 10.0
+	bubble_style.content_margin_right = 10.0
+	bubble_style.content_margin_top = 7.0
+	bubble_style.content_margin_bottom = 7.0
 
 	bubble_panel.add_theme_stylebox_override("panel", bubble_style)
 	root.add_child(bubble_panel)
 
 	bubble_text = Label.new()
-	bubble_text.custom_minimum_size = Vector2(160, 40)
+	bubble_text.custom_minimum_size = Vector2(216, 56)
 	bubble_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bubble_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	bubble_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -877,7 +881,7 @@ func create_interface() -> void:
 		"font_color",
 		Color("#242424")
 	)
-	bubble_text.add_theme_font_size_override("font_size", 15)
+	PixelUIScript.apply(bubble_text, 12)
 
 	bubble_panel.add_child(bubble_text)
 
