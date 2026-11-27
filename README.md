@@ -10,6 +10,8 @@ Jeremy wanders and hops around on his own.
 
 Animations are separated in `jeremy_sprite_frames.tres`. Optional animations named `jumping` and `eating` are picked up automatically when added. The editable art source is included as `jeremy.aseprite`.
 
+Tiny dust puffs appear when Jeremy walks, jumps, and bounces. Eating a tab throws a few crumbs. Particles can be turned off with `particles_enabled` on the root script.
+
 ## Download
 
 **Windows:** https://github.com/veroteknic/the-useless-fuck/releases/latest/download/jeremy.exe

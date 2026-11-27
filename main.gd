@@ -32,6 +32,7 @@ const JUMP_ANIMATION := "jumping"
 @export var jump_speed_max := 1150.0
 @export var jump_horizontal_min := 90.0
 @export var jump_horizontal_max := 180.0
+@export var particles_enabled := true
 
 var desktop_position := Vector2.ZERO
 var velocity := Vector2.ZERO
@@ -68,12 +69,16 @@ var walking := false
 var walk_direction := 1.0
 var walk_timer := 0.0
 var walk_pause_timer := 0.0
+var walk_dust_timer := 0.0
 var jump_timer := 0.0
 var self_jump := false
 var jump_launch := false
 
 var tab_layer: CanvasLayer
 var tab_visual: PanelContainer
+
+var dust_particles: CPUParticles2D
+var crumb_particles: CPUParticles2D
 
 # Kept as files in user:// because inline PowerShell here-strings lose their
 # quotes when passed through OS.execute's argument list on Windows.
@@ -106,6 +111,7 @@ var close_tab_ps := "\n".join([
 func _ready() -> void:
 	_setup_window()
 	_setup_physics()
+	_setup_particles()
 
 	await get_tree().process_frame
 
@@ -179,6 +185,105 @@ func _setup_physics() -> void:
 	sprite.scale = Vector2(4.0, 4.0)
 
 
+func _setup_particles() -> void:
+	var particle_texture := _make_particle_texture()
+
+	dust_particles = CPUParticles2D.new()
+	dust_particles.name = "DustParticles"
+	dust_particles.texture = particle_texture
+	dust_particles.z_index = -1
+	dust_particles.one_shot = true
+	dust_particles.local_coords = true
+	dust_particles.emitting = false
+	dust_particles.amount = 16
+	dust_particles.lifetime = 0.5
+	dust_particles.lifetime_randomness = 0.35
+	dust_particles.explosiveness = 1.0
+	dust_particles.direction = Vector2.RIGHT
+	dust_particles.spread = 360.0
+	dust_particles.initial_velocity_min = 35.0
+	dust_particles.initial_velocity_max = 110.0
+	dust_particles.gravity = Vector2(0, 70.0)
+	dust_particles.damping_min = 60.0
+	dust_particles.damping_max = 130.0
+	dust_particles.angle_min = 0.0
+	dust_particles.angle_max = 360.0
+	dust_particles.angular_velocity_min = -180.0
+	dust_particles.angular_velocity_max = 180.0
+	dust_particles.scale_amount_min = 0.5
+	dust_particles.scale_amount_max = 1.4
+	dust_particles.color = Color("#d8d1bf")
+	dust_particles.color_ramp = _make_fade_gradient(0.85)
+	dust_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	dust_particles.emission_rect_extents = Vector2(18.0, 3.0)
+	add_child(dust_particles)
+
+	crumb_particles = CPUParticles2D.new()
+	crumb_particles.name = "CrumbParticles"
+	crumb_particles.texture = particle_texture
+	crumb_particles.z_index = 1
+	crumb_particles.one_shot = true
+	crumb_particles.local_coords = true
+	crumb_particles.emitting = false
+	crumb_particles.amount = 22
+	crumb_particles.lifetime = 0.85
+	crumb_particles.lifetime_randomness = 0.4
+	crumb_particles.explosiveness = 1.0
+	crumb_particles.direction = Vector2.UP
+	crumb_particles.spread = 120.0
+	crumb_particles.initial_velocity_min = 60.0
+	crumb_particles.initial_velocity_max = 170.0
+	crumb_particles.gravity = Vector2(0, 520.0)
+	crumb_particles.damping_min = 20.0
+	crumb_particles.damping_max = 60.0
+	crumb_particles.angle_min = 0.0
+	crumb_particles.angle_max = 360.0
+	crumb_particles.angular_velocity_min = -360.0
+	crumb_particles.angular_velocity_max = 360.0
+	crumb_particles.scale_amount_min = 0.5
+	crumb_particles.scale_amount_max = 1.5
+	crumb_particles.color = Color("#d9dde3")
+	crumb_particles.color_ramp = _make_fade_gradient(1.0)
+	add_child(crumb_particles)
+
+
+func _make_particle_texture() -> ImageTexture:
+	var image := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+
+	for y in range(8):
+		for x in range(8):
+			var distance := Vector2(x - 3.5, y - 3.5).length() / 4.5
+			var alpha := clampf(1.0 - distance, 0.0, 1.0)
+			image.set_pixel(x, y, Color(1, 1, 1, alpha))
+
+	return ImageTexture.create_from_image(image)
+
+
+func _make_fade_gradient(start_alpha: float) -> Gradient:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(1, 1, 1, start_alpha))
+	gradient.set_color(1, Color(1, 1, 1, 0.0))
+	return gradient
+
+
+func burst_dust(local_position: Vector2) -> void:
+	if not particles_enabled or dust_particles == null:
+		return
+
+	dust_particles.position = local_position
+	dust_particles.restart()
+	dust_particles.emitting = true
+
+
+func burst_crumbs(local_position: Vector2) -> void:
+	if not particles_enabled or crumb_particles == null:
+		return
+
+	crumb_particles.position = local_position
+	crumb_particles.restart()
+	crumb_particles.emitting = true
+
+
 func update_desktop_bounds() -> void:
 	var screen_count := DisplayServer.get_screen_count()
 
@@ -243,6 +348,9 @@ func handle_physics(delta: float) -> void:
 		desktop_position.y = desktop_max.y
 		jump_launch = false
 
+		if impact_speed > settling_threshold:
+			burst_dust(PET_LOCAL_POSITION + Vector2(0, 56.0))
+
 		if impact_speed >= landing_threshold and not self_jump:
 			# Remember the hard impact, but keep bouncing. The celebration
 			# fires only when this fall finally settles on the floor.
@@ -290,6 +398,11 @@ func handle_ground_movement(delta: float) -> void:
 
 		sprite.flip_h = walk_direction < 0.0
 
+		walk_dust_timer -= delta
+		if walk_dust_timer <= 0.0:
+			burst_dust(PET_LOCAL_POSITION + Vector2(0, 56.0))
+			walk_dust_timer = 0.6
+
 		walk_timer -= delta
 		if walk_timer <= 0.0:
 			stop_walking()
@@ -322,6 +435,7 @@ func start_walking() -> void:
 	walking = true
 	walk_direction = [-1.0, 1.0].pick_random()
 	walk_timer = randf_range(walk_duration_min, walk_duration_max)
+	walk_dust_timer = 0.0
 	velocity.x = walk_direction * walk_speed
 	sprite.flip_h = walk_direction < 0.0
 
@@ -365,6 +479,8 @@ func start_jump() -> void:
 	velocity.x = direction * randf_range(jump_horizontal_min, jump_horizontal_max)
 	velocity.y = -randf_range(jump_speed_min, jump_speed_max)
 	sprite.flip_h = velocity.x < 0.0
+
+	burst_dust(PET_LOCAL_POSITION + Vector2(0, 56.0))
 
 	reset_jump_timer()
 	reset_walk_pause_timer()
@@ -667,6 +783,7 @@ func steal_tab() -> void:
 	# Let the visual tab reach his mouth before the real tab goes away.
 	await get_tree().create_timer(0.45).timeout
 	_close_active_tab()
+	burst_crumbs(PET_LOCAL_POSITION + Vector2(0, -12.0))
 
 	await get_tree().create_timer(0.25).timeout
 	eating = false
