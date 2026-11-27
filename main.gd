@@ -1,5 +1,7 @@
 extends Node2D
 
+const NotepadManagerScript = preload("res://notepad_manager.gd")
+
 @onready var camera: Camera2D = $Camera2D
 @onready var body: RigidBody2D = $RigidBody2D
 @onready var sprite: AnimatedSprite2D = $RigidBody2D/AnimatedSprite2D
@@ -12,6 +14,11 @@ const PET_LOCAL_POSITION := Vector2(200, 240)
 const DRAG_MOVE_THRESHOLD := 6.0
 const EAT_ANIMATION := "eating"
 const JUMP_ANIMATION := "jumping"
+const SPRITE_BASE_SCALE := 4.0
+const CURSOR_SCRIPT_NAME := "jeremy_cursor.ps1"
+const CURSOR_TARGET_NAME := "jeremy_cursor_target.txt"
+const CURSOR_STOP_NAME := "jeremy_cursor_stop.txt"
+const TAB_COUNT_NAME := "jeremy_tabs.cfg"
 
 @export var gravity := 1600.0
 @export var bounce := 0.55
@@ -33,6 +40,17 @@ const JUMP_ANIMATION := "jumping"
 @export var jump_horizontal_min := 90.0
 @export var jump_horizontal_max := 180.0
 @export var particles_enabled := true
+@export var squash_stretch_enabled := true
+@export var squash_strength := 0.22
+@export var edge_behaviors_enabled := true
+@export var edge_behavior_chance := 0.35
+@export var cursor_steal_enabled := true
+@export var cursor_steal_auto_enabled := true
+@export var cursor_steal_duration := 1.6
+@export var cursor_steal_auto_min := 28.0
+@export var cursor_steal_auto_max := 55.0
+@export var notepads_enabled := true
+@export var context_chatter_chance := 0.35
 
 var desktop_position := Vector2.ZERO
 var velocity := Vector2.ZERO
@@ -85,6 +103,24 @@ var crumb_origin := Vector2.ZERO
 var dust_origin_set := false
 var crumb_origin_set := false
 
+var squash := 0.0
+
+var edge_hanging := false
+var edge_hang_side := ""
+var edge_hang_timer := 0.0
+var edge_dust_timer := 0.0
+var edge_peeking := false
+var edge_peek_timer := 0.0
+
+var cursor_stealing := false
+var cursor_steal_timer := 0.0
+var cursor_steal_target_timer := 0.0
+var cursor_steal_pid := -1
+var cursor_auto_timer := 0.0
+
+var notepad_manager: Node
+var tabs_eaten := 0
+
 # Kept as files in user:// because inline PowerShell here-strings lose their
 # quotes when passed through OS.execute's argument list on Windows.
 var foreground_ps := "\n".join([
@@ -112,11 +148,52 @@ var close_tab_ps := "\n".join([
 	"[System.Windows.Forms.SendKeys]::SendWait(\"^w\")"
 ])
 
+# Follows a target file so Jeremy can tug the pointer toward himself while he
+# keeps moving. The stop file lets clicks cancel the gag immediately.
+var cursor_ps := "\n".join([
+	'param([string]$TargetFile, [string]$StopFile, [int]$DurationMs, [int]$StepMs)',
+	'Add-Type @"',
+	'using System;',
+	'using System.Runtime.InteropServices;',
+	'public static class JeremyCursor {',
+	'  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);',
+	'  [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);',
+	'  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }',
+	'}',
+	'"@',
+	'$deadline = [Environment]::TickCount + $DurationMs',
+	'while ([Environment]::TickCount -lt $deadline) {',
+	'  if (Test-Path -LiteralPath $StopFile) { break }',
+	'  if (-not (Test-Path -LiteralPath $TargetFile)) { Start-Sleep -Milliseconds $StepMs; continue }',
+	'  $raw = (Get-Content -LiteralPath $TargetFile -Raw -ErrorAction SilentlyContinue).Trim()',
+	'  $parts = $raw.Split([char]44)',
+	'  if ($parts.Length -ge 2) {',
+	'    $tx = [int]$parts[0]',
+	'    $ty = [int]$parts[1]',
+	'    $p = New-Object JeremyCursor+POINT',
+	'    if ([JeremyCursor]::GetCursorPos([ref]$p)) {',
+	'      $nx = [int]($p.X + ($tx - $p.X) * 0.28)',
+	'      $ny = [int]($p.Y + ($ty - $p.Y) * 0.28)',
+	'      [JeremyCursor]::SetCursorPos($nx, $ny) | Out-Null',
+	'    }',
+	'  }',
+	'  Start-Sleep -Milliseconds $StepMs',
+	'}'
+])
+
 
 func _ready() -> void:
 	_setup_window()
 	_setup_physics()
 	_setup_particles()
+
+	if notepads_enabled:
+		notepad_manager = NotepadManagerScript.new()
+		notepad_manager.name = "NotepadManager"
+		add_child(notepad_manager)
+
+	_load_tab_count()
+	reset_cursor_auto_timer()
 
 	await get_tree().process_frame
 
@@ -154,6 +231,8 @@ func _process(delta: float) -> void:
 		handle_physics(delta)
 
 	update_animation(delta)
+	update_squash_stretch(delta)
+	update_cursor_steal(delta)
 	update_window_position()
 	update_particle_positions()
 
@@ -188,7 +267,7 @@ func _setup_physics() -> void:
 	circle.radius = PET_RADIUS
 	collision_shape.shape = circle
 
-	sprite.scale = Vector2(4.0, 4.0)
+	sprite.scale = Vector2(SPRITE_BASE_SCALE, SPRITE_BASE_SCALE)
 
 
 func _setup_particles() -> void:
@@ -377,6 +456,14 @@ func update_desktop_bounds() -> void:
 
 
 func handle_physics(delta: float) -> void:
+	if edge_hanging:
+		update_edge_hang(delta)
+		return
+
+	if edge_peeking:
+		update_edge_peek(delta)
+		return
+
 	if grounded:
 		desktop_position.y = desktop_max.y
 		velocity.y = 0.0
@@ -397,6 +484,8 @@ func handle_physics(delta: float) -> void:
 		velocity.x = absf(velocity.x) * bounce
 		if left_impact_speed > settling_threshold:
 			burst_dust("left")
+			if maybe_start_wall_behavior("left", left_impact_speed):
+				return
 
 	# Right wall.
 	if desktop_position.x > desktop_max.x:
@@ -405,6 +494,8 @@ func handle_physics(delta: float) -> void:
 		velocity.x = -absf(velocity.x) * bounce
 		if right_impact_speed > settling_threshold:
 			burst_dust("right")
+			if maybe_start_wall_behavior("right", right_impact_speed):
+				return
 
 	# Ceiling.
 	if desktop_position.y < desktop_min.y:
@@ -413,6 +504,8 @@ func handle_physics(delta: float) -> void:
 		velocity.y = absf(velocity.y) * bounce
 		if ceiling_impact_speed > settling_threshold:
 			burst_dust("top")
+			if maybe_start_ceiling_peek(ceiling_impact_speed):
+				return
 
 	# Floor.
 	if desktop_position.y >= desktop_max.y:
@@ -423,6 +516,12 @@ func handle_physics(delta: float) -> void:
 
 		if impact_speed > settling_threshold:
 			burst_dust("bottom")
+
+		if squash_stretch_enabled:
+			squash = maxf(
+				squash,
+				clampf(impact_speed / maxf(landing_threshold, 1.0), 0.0, 1.0) * squash_strength
+			)
 
 		if impact_speed >= landing_threshold and not self_jump:
 			# Remember the hard impact, but keep bouncing. The celebration
@@ -445,6 +544,150 @@ func handle_physics(delta: float) -> void:
 			velocity.y = -impact_speed * bounce
 			grounded = false
 			airborne = true
+
+
+func maybe_start_wall_behavior(side: String, impact_speed: float) -> bool:
+	if not edge_behaviors_enabled:
+		return false
+
+	if impact_speed < landing_threshold:
+		return false
+
+	if randf() >= edge_behavior_chance:
+		return false
+
+	edge_hanging = true
+	edge_hang_side = side
+	edge_hang_timer = randf_range(0.35, 0.85)
+	edge_dust_timer = 0.2
+	grounded = false
+	airborne = true
+	walking = false
+	celebrating = false
+	chattering = false
+	speaking = false
+	self_jump = false
+	jump_launch = false
+	velocity.x = 0.0
+	velocity.y = clampf(velocity.y, -80.0, 160.0)
+	sprite.flip_h = side == "right"
+
+	if randf() < 0.4:
+		speak("say_random_edge")
+
+	return true
+
+
+func update_edge_hang(delta: float) -> void:
+	edge_hang_timer -= delta
+	desktop_position.x = desktop_min.x if edge_hang_side == "left" else desktop_max.x
+
+	velocity.x = 0.0
+	velocity.y = minf(velocity.y + gravity * 0.35 * delta, 280.0)
+	desktop_position.y += velocity.y * delta
+
+	edge_dust_timer -= delta
+	if edge_dust_timer <= 0.0:
+		burst_dust(edge_hang_side)
+		edge_dust_timer = 0.24
+
+	if desktop_position.y >= desktop_max.y:
+		desktop_position.y = desktop_max.y
+		velocity.y = 0.0
+		edge_hanging = false
+		grounded = true
+		airborne = false
+		reset_walk_pause_timer()
+		reset_jump_timer()
+		return
+
+	if edge_hang_timer <= 0.0:
+		edge_hanging = false
+		var inward := 1.0 if edge_hang_side == "left" else -1.0
+		velocity.x = inward * randf_range(200.0, 340.0)
+		velocity.y = -randf_range(300.0, 460.0)
+		jump_launch = false
+		burst_dust(edge_hang_side)
+
+
+func maybe_start_ceiling_peek(impact_speed: float) -> bool:
+	if not edge_behaviors_enabled:
+		return false
+
+	if impact_speed < landing_threshold:
+		return false
+
+	if randf() >= edge_behavior_chance:
+		return false
+
+	edge_peeking = true
+	edge_peek_timer = randf_range(0.3, 0.7)
+	grounded = false
+	airborne = true
+	walking = false
+	celebrating = false
+	chattering = false
+	speaking = false
+	self_jump = false
+	jump_launch = false
+	velocity = Vector2.ZERO
+	burst_dust("top")
+	speak("say_random_edge")
+	return true
+
+
+func update_edge_peek(delta: float) -> void:
+	edge_peek_timer -= delta
+	desktop_position.y = desktop_min.y
+
+	velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
+	velocity.y = 0.0
+
+	if edge_peek_timer <= 0.0:
+		edge_peeking = false
+		velocity.y = randf_range(140.0, 240.0)
+		burst_dust("top")
+
+
+func clear_edge_states() -> void:
+	edge_hanging = false
+	edge_hang_side = ""
+	edge_hang_timer = 0.0
+	edge_dust_timer = 0.0
+	edge_peeking = false
+	edge_peek_timer = 0.0
+
+
+func update_squash_stretch(delta: float) -> void:
+	if not squash_stretch_enabled:
+		sprite.scale = Vector2(SPRITE_BASE_SCALE, SPRITE_BASE_SCALE)
+		return
+
+	squash = move_toward(squash, 0.0, delta * 2.6)
+
+	var scale_x := 1.0
+	var scale_y := 1.0
+
+	if edge_hanging:
+		scale_x = 1.12
+		scale_y = 0.9
+	elif edge_peeking:
+		scale_x = 0.9
+		scale_y = 1.1
+	elif airborne:
+		var stretch := (
+			clampf(absf(velocity.y) / maxf(jump_speed_max, 1.0), 0.0, 1.0) * 0.12
+		)
+		scale_x = 1.0 - stretch
+		scale_y = 1.0 + stretch
+
+	scale_x += squash * 0.75
+	scale_y -= squash
+
+	sprite.scale = Vector2(
+		SPRITE_BASE_SCALE * clampf(scale_x, 0.7, 1.35),
+		SPRITE_BASE_SCALE * clampf(scale_y, 0.65, 1.35)
+	)
 
 
 func handle_ground_movement(delta: float) -> void:
@@ -502,7 +745,17 @@ func handle_ground_movement(delta: float) -> void:
 
 
 func start_walking() -> void:
-	if not grounded or dragging or eating or celebrating or speaking or chattering:
+	if (
+		not grounded
+		or dragging
+		or eating
+		or celebrating
+		or speaking
+		or chattering
+		or edge_hanging
+		or edge_peeking
+		or cursor_stealing
+	):
 		return
 
 	walking = true
@@ -535,6 +788,9 @@ func can_start_jump() -> bool:
 		and not celebrating
 		and not speaking
 		and not chattering
+		and not edge_hanging
+		and not edge_peeking
+		and not cursor_stealing
 	)
 
 
@@ -569,11 +825,16 @@ func _on_body_input_event(
 			start_dragging()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			steal_tab()
+		elif event.button_index == MOUSE_BUTTON_MIDDLE:
+			steal_cursor()
 
 
 func start_dragging() -> void:
 	if dragging:
 		return
+
+	if cursor_stealing:
+		_stop_cursor_steal()
 
 	dragging = true
 	drag_moved = false
@@ -609,6 +870,7 @@ func handle_dragging(delta: float) -> void:
 
 		# First real movement: from here on he is actively being dragged.
 		drag_moved = true
+		clear_edge_states()
 		grounded = false
 		airborne = false
 		walking = false
@@ -669,6 +931,10 @@ func update_animation(delta: float) -> void:
 	if eating:
 		return
 
+	if edge_hanging or edge_peeking:
+		play_animation("falling")
+		return
+
 	# A press is only a drag once the pointer has actually moved. Plain
 	# clicks keep the grounded/airborne animation and never flail.
 	if dragging and drag_moved:
@@ -711,7 +977,10 @@ func update_animation(delta: float) -> void:
 
 		if chatter_timer <= 0.0:
 			chattering = true
-			speak("say_random_idle")
+			if randf() < context_chatter_chance:
+				speak("say_contextual")
+			else:
+				speak("say_random_idle")
 			return
 
 		if walking:
@@ -828,6 +1097,125 @@ func update_mouse_passthrough() -> void:
 
 
 # ==================================================
+# CURSOR STEALING (middle-click Jeremy, or he gets bold)
+# ==================================================
+
+func _user_path(file_name: String) -> String:
+	return ProjectSettings.globalize_path("user://" + file_name)
+
+
+func _write_user_script(file_name: String, script: String) -> String:
+	var path := _user_path(file_name)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+
+	if file == null:
+		return ""
+
+	file.store_string(script)
+	file.close()
+	return path
+
+
+func _write_cursor_target() -> void:
+	var file := FileAccess.open(_user_path(CURSOR_TARGET_NAME), FileAccess.WRITE)
+
+	if file == null:
+		return
+
+	file.store_string("%d,%d" % [
+		roundi(desktop_position.x),
+		roundi(desktop_position.y)
+	])
+	file.close()
+
+
+func reset_cursor_auto_timer() -> void:
+	cursor_auto_timer = randf_range(cursor_steal_auto_min, cursor_steal_auto_max)
+
+
+func steal_cursor() -> void:
+	if not cursor_steal_enabled or cursor_stealing or dragging or eating:
+		return
+
+	var stop_path := _user_path(CURSOR_STOP_NAME)
+	if FileAccess.file_exists(stop_path):
+		DirAccess.remove_absolute(stop_path)
+
+	_write_cursor_target()
+
+	var script_path := _write_user_script(CURSOR_SCRIPT_NAME, cursor_ps)
+	if script_path.is_empty():
+		return
+
+	cursor_stealing = true
+	cursor_steal_timer = cursor_steal_duration
+	cursor_steal_target_timer = 0.0
+
+	cursor_steal_pid = OS.create_process("powershell.exe", PackedStringArray([
+		"-NoProfile",
+		"-File",
+		script_path,
+		_user_path(CURSOR_TARGET_NAME),
+		stop_path,
+		str(roundi(cursor_steal_duration * 1000.0)),
+		"16"
+	]), false)
+
+	if cursor_steal_pid <= 0:
+		_stop_cursor_steal()
+		return
+
+	speak("say_random_cursor")
+
+
+func update_cursor_steal(delta: float) -> void:
+	if cursor_stealing:
+		cursor_steal_timer -= delta
+		cursor_steal_target_timer -= delta
+
+		if cursor_steal_target_timer <= 0.0:
+			_write_cursor_target()
+			cursor_steal_target_timer = 0.06
+
+		if cursor_steal_timer <= 0.0:
+			_stop_cursor_steal()
+
+		return
+
+	if not cursor_steal_auto_enabled:
+		return
+
+	cursor_auto_timer -= delta
+	if cursor_auto_timer > 0.0 or not can_start_jump() or walking:
+		return
+
+	var mouse_position := Vector2(DisplayServer.mouse_get_position())
+	if mouse_position.distance_to(desktop_position) <= PET_RADIUS:
+		steal_cursor()
+
+	reset_cursor_auto_timer()
+
+
+func _stop_cursor_steal() -> void:
+	if not cursor_stealing and cursor_steal_pid <= 0:
+		return
+
+	cursor_stealing = false
+
+	var stop_path := _user_path(CURSOR_STOP_NAME)
+	var file := FileAccess.open(stop_path, FileAccess.WRITE)
+	if file != null:
+		file.store_string("1")
+		file.close()
+
+	if cursor_steal_pid > 0:
+		OS.kill(cursor_steal_pid)
+		cursor_steal_pid = -1
+
+	reset_cursor_auto_timer()
+
+
+# ==================================================
 # TAB STEALING (right-click Jeremy)
 # ==================================================
 
@@ -857,6 +1245,7 @@ func steal_tab() -> void:
 	await get_tree().create_timer(0.45).timeout
 	_close_active_tab()
 	burst_crumbs()
+	_register_eaten_tab()
 
 	await get_tree().create_timer(0.25).timeout
 	eating = false
@@ -875,14 +1264,9 @@ func steal_tab() -> void:
 
 
 func _run_powershell_file(file_name: String, script: String) -> Array[String]:
-	var path := ProjectSettings.globalize_path("user://" + file_name)
-	var file := FileAccess.open(path, FileAccess.WRITE)
-
-	if file == null:
+	var path := _write_user_script(file_name, script)
+	if path.is_empty():
 		return []
-
-	file.store_string(script)
-	file.close()
 
 	var output: Array[String] = []
 
@@ -922,6 +1306,50 @@ func _foreground_browser() -> Dictionary:
 
 func _close_active_tab() -> void:
 	_run_powershell_file("jeremy_close_tab.ps1", close_tab_ps)
+
+
+func _today_string() -> String:
+	var date := Time.get_datetime_dict_from_system()
+	return "%04d-%02d-%02d" % [
+		int(date.get("year", 1970)),
+		int(date.get("month", 1)),
+		int(date.get("day", 1))
+	]
+
+
+func _load_tab_count() -> void:
+	var config := ConfigFile.new()
+	if config.load(_user_path(TAB_COUNT_NAME)) != OK:
+		return
+
+	if str(config.get_value("jeremy", "date", "")) == _today_string():
+		tabs_eaten = int(config.get_value("jeremy", "eaten", 0))
+
+
+func _save_tab_count() -> void:
+	var config := ConfigFile.new()
+	config.set_value("jeremy", "date", _today_string())
+	config.set_value("jeremy", "eaten", tabs_eaten)
+	config.save(_user_path(TAB_COUNT_NAME))
+
+
+func _register_eaten_tab() -> void:
+	tabs_eaten += 1
+	_save_tab_count()
+
+	if dialogue != null and dialogue.has_method("say_eaten_tab"):
+		dialogue.call("say_eaten_tab", tabs_eaten)
+
+	if notepad_manager != null:
+		var notes := [
+			"note to self: that tab was delicious.",
+			"note to self: tabs are snacks.",
+			"note to self: i regret nothing.",
+			"note to self: maybe leave one next time.",
+			"note to self: the human is doing fine.",
+			"note to self: i am doing better."
+		]
+		notepad_manager.call("write_note", notes.pick_random())
 
 
 func _play_eat_animation() -> void:

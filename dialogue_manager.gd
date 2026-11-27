@@ -575,6 +575,236 @@ var landing_lines := [
 	"worth it."
 ]
 
+var edge_lines := [
+	"hello from up here.",
+	"the ceiling is friendly.",
+	"i'm hanging in there.",
+	"literally.",
+	"nice edge.",
+	"very edge.",
+	"i like this corner.",
+	"don't worry, i've got it.",
+	"this is called parked.",
+	"i'm taking a vertical break.",
+	"gravity can wait.",
+	"just a moment.",
+	"i found the side of the world.",
+	"the wall is warm.",
+	"i'm wall art now.",
+	"temporary sculpture.",
+	"very temporary.",
+	"i'm peeking.",
+	"i saw everything.",
+	"nothing to report from up here."
+]
+
+var cursor_lines := [
+	"mine now.",
+	"i'm borrowing this.",
+	"i'll give it back.",
+	"probably.",
+	"cursor custody is temporary.",
+	"i have tiny hands.",
+	"this is fine.",
+	"you can have it later.",
+	"i just need it a second.",
+	"the cursor looked lost.",
+	"i'm helping.",
+	"definitely helping.",
+	"don't chase me.",
+	"too late.",
+	"i'm very fast today.",
+	"this is my sport.",
+	"cursor wrestling.",
+	"i'm winning.",
+	"you're a good sport.",
+	"thanks for the loan."
+]
+
+var eaten_lines := [
+	"that tab was delicious.",
+	"it looked lonely.",
+	"i did a thing.",
+	"sorry.",
+	"not sorry.",
+	"i'm full.",
+	"crumbs.",
+	"excellent crunch.",
+	"a small snack.",
+	"it wanted to be eaten.",
+	"i asked first.",
+	"you weren't looking.",
+	"i'm a professional.",
+	"that's one.",
+	"this is a hobby now.",
+	"i have no regrets.",
+	"okay, maybe one.",
+	"the tab is gone.",
+	"i ate the evidence.",
+	"you can't prove it."
+]
+
+var morning_lines := [
+	"you're up early.",
+	"the desktop is still waking up.",
+	"good morning, person.",
+	"i like this hour.",
+	"everything feels new.",
+	"coffee weather.",
+	"i don't drink coffee.",
+	"i just stand here.",
+	"the morning is quiet.",
+	"i heard a bird once.",
+	"it was an icon.",
+	"today could be anything.",
+	"let's be gentle with it.",
+	"i'm ready.",
+	"i think.",
+	"the screens are soft today.",
+	"i could nap.",
+	"i won't.",
+	"probably.",
+	"morning, tiny world."
+]
+
+var afternoon_lines := [
+	"the afternoon is long.",
+	"you've been at it a while.",
+	"i took several breaks for you.",
+	"i'm very hardworking.",
+	"i do mostly standing.",
+	"it's a skill.",
+	"the light changed.",
+	"i noticed.",
+	"i notice everything.",
+	"you seem busy.",
+	"i'll be quiet.",
+	"for a bit.",
+	"lunch was a while ago.",
+	"is it lunch again?",
+	"asking for a friend.",
+	"the friend is me.",
+	"i'm a little restless.",
+	"this is my walk time.",
+	"the floor is calling.",
+	"afternoon, human."
+]
+
+var evening_lines := [
+	"the screen is softer now.",
+	"evening, person.",
+	"you're still here.",
+	"i'm still here too.",
+	"the desk is getting dim.",
+	"i like the warm light.",
+	"the icons look sleepy.",
+	"i look sleepy too.",
+	"i'm always like this.",
+	"maybe wrap it up.",
+	"i'm not bossy.",
+	"i'm just tiny and wise.",
+	"the day is winding down.",
+	"so am i.",
+	"slowly.",
+	"i had a good day.",
+	"mostly standing.",
+	"and one tab.",
+	"that was enough.",
+	"good evening."
+]
+
+var night_lines := [
+	"shouldn't you be asleep?",
+	"i'll keep watch.",
+	"the desktop is quiet.",
+	"i like the quiet.",
+	"i don't like it that much.",
+	"night again.",
+	"the icons are dreaming.",
+	"i can't sleep.",
+	"i'm too small for dreams.",
+	"or too full of them.",
+	"the screen glows.",
+	"you're very late.",
+	"i'm not judging.",
+	"much.",
+	"rest if you want.",
+	"i'll stay here.",
+	"the floor is comfortable.",
+	"probably.",
+	"night, human.",
+	"i'm still awake."
+]
+
+var monday_lines := [
+	"monday again.",
+	"bold of the calendar.",
+	"the desktop feels tired too.",
+	"i'll start slow.",
+	"one bounce at a time.",
+	"we can do this.",
+	"i can't, but you can.",
+	"i believe in you.",
+	"monday is just a Tuesday with baggage.",
+	"i made that up.",
+	"i'm not very good at weeks.",
+	"but i'm here.",
+	"let's be kind to monday.",
+	"and to ourselves.",
+	"i need a tiny hat for this.",
+	"same as every day.",
+	"the floor supports us.",
+	"emotionally, maybe.",
+	"here we go.",
+	"i'm ready-ish."
+]
+
+var friday_lines := [
+	"it's friday.",
+	"i can feel it.",
+	"the icons look relieved.",
+	"me too.",
+	"almost the weekend.",
+	"almost.",
+	"don't get excited.",
+	"i already did.",
+	"friday desk energy.",
+	"i'm doing my part.",
+	"mostly standing.",
+	"and one small dance.",
+	"you earned something.",
+	"i don't know what.",
+	"maybe a nap.",
+	"or a tab.",
+	"i'll take the tab.",
+	"i'm just kidding.",
+	"probably.",
+	"good friday."
+]
+
+var weekend_lines := [
+	"it's the weekend.",
+	"no important business today.",
+	"i cancelled my meetings.",
+	"all one of them.",
+	"the desktop is ours.",
+	"we can do nothing.",
+	"i'm very good at that.",
+	"you should try it.",
+	"rest is productive.",
+	"i read that somewhere.",
+	"or made it up.",
+	"same thing.",
+	"the icons are relaxed.",
+	"i feel relaxed.",
+	"i feel standing.",
+	"the floor is open.",
+	"let's take it slow.",
+	"no rush.",
+	"nice weekend.",
+	"i'm enjoying it."
+]
+
 
 func _ready() -> void:
 	layer = 10
@@ -670,6 +900,51 @@ func say_random_throw() -> void:
 
 func say_random_landing() -> void:
 	say(_draw_line("landing", landing_lines))
+
+
+func say_random_edge() -> void:
+	say(_draw_line("edge", edge_lines))
+
+
+func say_random_cursor() -> void:
+	say(_draw_line("cursor", cursor_lines))
+
+
+func say_eaten_tab(count: int) -> void:
+	var line := str(_draw_line("eaten", eaten_lines))
+	say(line + " tabs eaten today: " + str(maxi(count, 0)) + ".", 2.8)
+
+
+func say_contextual() -> void:
+	var date := Time.get_datetime_dict_from_system()
+	var hour := int(date.get("hour", 12))
+	var weekday := int(date.get("weekday", -1))
+
+	if weekday == 1 and randf() < 0.55:
+		say(_draw_line("monday", monday_lines))
+		return
+
+	if weekday == 5 and randf() < 0.55:
+		say(_draw_line("friday", friday_lines))
+		return
+
+	if (weekday == 0 or weekday == 6) and randf() < 0.6:
+		say(_draw_line("weekend", weekend_lines))
+		return
+
+	if hour >= 22 or hour < 5:
+		say(_draw_line("night", night_lines))
+		return
+
+	if hour < 11:
+		say(_draw_line("morning", morning_lines))
+		return
+
+	if hour < 17:
+		say(_draw_line("afternoon", afternoon_lines))
+		return
+
+	say(_draw_line("evening", evening_lines))
 
 
 func hide_bubble() -> void:
