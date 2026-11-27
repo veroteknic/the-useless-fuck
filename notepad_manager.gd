@@ -107,8 +107,8 @@ var launch_ps := "\n".join([
 	"  [JeremyNotepad]::SetForegroundWindow($previous) | Out-Null",
 	"}",
 	"",
-	"\"pid=$($proc.Id)\"",
-	"\"hwnd=$($hwnd.ToInt64())\""
+	"$info = \"pid=$($proc.Id)`r`nhwnd=$($hwnd.ToInt64())`r`n\"",
+	"Set-Content -LiteralPath $InfoFile -Value $info -Encoding ASCII"
 ])
 
 var close_ps := "\n".join([
@@ -139,6 +139,8 @@ func _process(delta: float) -> void:
 		write_note()
 		reset_note_timer()
 
+	_poll_note_info(delta)
+
 	if note_lifetime <= 0.0:
 		return
 
@@ -161,19 +163,22 @@ func write_note(message: String = "") -> void:
 		_close_note(notes[0])
 
 	var text := message if not message.is_empty() else _pick_note_text()
-	var file_path := _write_note_file(text)
+	var note_id := next_note_number
+	var file_path := _write_note_file(text, note_id)
 	if file_path.is_empty():
 		return
 
 	var hint := Vector2(DisplayServer.mouse_get_position())
 	var position := _random_note_position(NOTE_WINDOW_SIZE, hint)
-	var info_file := _user_path("jeremy_notepad_info.txt")
+	var info_file := _user_path("jeremy_notepad_info_%d.txt" % note_id)
 	var script_path := _write_user_script(LAUNCH_SCRIPT_NAME, launch_ps)
 	if script_path.is_empty():
 		return
 
-	var output: Array[String] = []
-	OS.execute("powershell.exe", PackedStringArray([
+	if FileAccess.file_exists(info_file):
+		DirAccess.remove_absolute(info_file)
+
+	var launcher_pid := OS.create_process("powershell.exe", PackedStringArray([
 		"-NoProfile",
 		"-File",
 		script_path,
@@ -184,22 +189,24 @@ func write_note(message: String = "") -> void:
 		str(NOTE_WINDOW_SIZE.x),
 		str(NOTE_WINDOW_SIZE.y),
 		"1" if restore_previous_focus else "0"
-	]), output, true)
+	]), false)
 
-	var info := _parse_info(output)
-	var pid := int(info.get("pid", "-1"))
-	var hwnd := int(info.get("hwnd", "0"))
+	if launcher_pid <= 0:
+		return
 
 	notes.append({
 		"file": file_path,
-		"pid": pid,
-		"hwnd": hwnd,
+		"info_file": info_file,
+		"pid": -1,
+		"hwnd": 0,
 		"remaining": note_lifetime,
-		"closing": false
+		"closing": false,
+		"info_pending": true,
+		"info_wait": 6.0
 	})
 
 
-func _write_note_file(text: String) -> String:
+func _write_note_file(text: String, note_id: int) -> String:
 	var note_dir := ProjectSettings.globalize_path("user://" + NOTE_DIR_NAME)
 	DirAccess.make_dir_recursive_absolute(note_dir)
 
@@ -213,7 +220,7 @@ func _write_note_file(text: String) -> String:
 		int(date.get("second", 0))
 	]
 
-	var file_name := "jeremy-note-%s-%02d.txt" % [stamp, next_note_number]
+	var file_name := "jeremy-note-%s-%02d.txt" % [stamp, note_id]
 	next_note_number += 1
 
 	var path := note_dir + "\\" + file_name
@@ -230,9 +237,38 @@ func _write_note_file(text: String) -> String:
 	return path
 
 
-func _parse_info(output: Array[String]) -> Dictionary:
+func _poll_note_info(delta: float) -> void:
+	for entry in notes:
+		if not bool(entry.get("info_pending", false)):
+			continue
+
+		var info_file := str(entry.get("info_file", ""))
+		if FileAccess.file_exists(info_file):
+			var file := FileAccess.open(info_file, FileAccess.READ)
+			if file != null:
+				var content := file.get_as_text()
+				file.close()
+
+				if not content.strip_edges().is_empty():
+					var info := _parse_info_text(content)
+					entry["pid"] = int(info.get("pid", "-1"))
+					entry["hwnd"] = int(info.get("hwnd", "0"))
+					entry["info_pending"] = false
+					DirAccess.remove_absolute(info_file)
+					continue
+
+		var wait := float(entry.get("info_wait", 0.0)) - delta
+		entry["info_wait"] = wait
+
+		if wait <= 0.0:
+			entry["info_pending"] = false
+			if FileAccess.file_exists(info_file):
+				DirAccess.remove_absolute(info_file)
+
+
+func _parse_info_text(text: String) -> Dictionary:
 	var info := {}
-	for raw_line in output:
+	for raw_line in text.split("\n"):
 		var line := str(raw_line).strip_edges()
 		var parts := line.split("=", true, 1)
 		if parts.size() == 2:
@@ -301,9 +337,9 @@ func _close_note(entry: Dictionary) -> void:
 	if script_path.is_empty():
 		return
 
-	OS.execute("powershell.exe", PackedStringArray([
+	OS.create_process("powershell.exe", PackedStringArray([
 		"-NoProfile",
 		"-File",
 		script_path,
 		str(hwnd)
-	]), [], true)
+	]), false)

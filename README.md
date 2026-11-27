@@ -7,7 +7,7 @@ Jeremy wanders and hops around on his own.
 - Left-click: he says something.
 - Left-drag and release: throw him.
 - Right-click while a browser is focused: he eats that tab.
-- Middle-click: he steals your cursor for a moment, then loses interest.
+- Middle-click: he steals your cursor for a moment, then loses interest. He may also chase a nearby pointer on his own before snatching it.
 
 Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling, tug a nearby cursor, and write himself real Windows Notepad windows. His idle chatter notices the time of day, weekdays, and weekends. Tabs he eats are counted per day.
 

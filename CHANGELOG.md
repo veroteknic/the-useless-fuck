@@ -11,6 +11,7 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 - Open Jeremy's notes in real Windows Notepad windows instead of custom sticky-note windows.
 - Keep Notepad from stealing keyboard focus from the browser.
 - Add top padding to notes, move them away from the top screen edge, and make the windows a bit smaller.
+- Make real Notepad launches asynchronous so opening a note cannot freeze Jeremy.
 
 ## 2026-11-27
 
@@ -18,7 +19,7 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 - Add time-aware idle chatter for mornings, afternoons, evenings, nights, Mondays, Fridays, and weekends.
 - Add Jeremy-authored sticky notes.
 - Add tab-eating escalation with crumbs, daily counts, and snack dialogue.
-- Add cursor stealing by middle-click and occasional automatic cursor tugs.
+- Add cursor stealing by middle-click, occasional automatic cursor tugs, and autonomous cursor chasing before the steal.
 - Add squash and stretch during jumps and landings.
 
 ## 2026-11-27

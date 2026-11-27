@@ -49,6 +49,12 @@ const TAB_COUNT_NAME := "jeremy_tabs.cfg"
 @export var cursor_steal_duration := 1.6
 @export var cursor_steal_auto_min := 28.0
 @export var cursor_steal_auto_max := 55.0
+@export var cursor_chase_enabled := true
+@export var cursor_chase_radius := 360.0
+@export var cursor_chase_speed := 135.0
+@export var cursor_chase_timeout := 5.0
+@export var cursor_chase_cooldown_min := 22.0
+@export var cursor_chase_cooldown_max := 40.0
 @export var notepads_enabled := true
 @export var context_chatter_chance := 0.35
 
@@ -117,6 +123,9 @@ var cursor_steal_timer := 0.0
 var cursor_steal_target_timer := 0.0
 var cursor_steal_pid := -1
 var cursor_auto_timer := 0.0
+var cursor_chasing := false
+var cursor_chase_timer := 0.0
+var cursor_chase_cooldown := 0.0
 
 var notepad_manager: Node
 var tabs_eaten := 0
@@ -194,6 +203,7 @@ func _ready() -> void:
 
 	_load_tab_count()
 	reset_cursor_auto_timer()
+	reset_cursor_chase_cooldown()
 
 	await get_tree().process_frame
 
@@ -691,6 +701,10 @@ func update_squash_stretch(delta: float) -> void:
 
 
 func handle_ground_movement(delta: float) -> void:
+	if cursor_chasing:
+		update_cursor_chase(delta)
+		return
+
 	jump_timer -= delta
 
 	if jump_timer <= 0.0:
@@ -755,6 +769,7 @@ func start_walking() -> void:
 		or edge_hanging
 		or edge_peeking
 		or cursor_stealing
+		or cursor_chasing
 	):
 		return
 
@@ -791,6 +806,7 @@ func can_start_jump() -> bool:
 		and not edge_hanging
 		and not edge_peeking
 		and not cursor_stealing
+		and not cursor_chasing
 	)
 
 
@@ -835,6 +851,9 @@ func start_dragging() -> void:
 
 	if cursor_stealing:
 		_stop_cursor_steal()
+
+	if cursor_chasing:
+		_stop_cursor_chase()
 
 	dragging = true
 	drag_moved = false
@@ -1133,9 +1152,19 @@ func reset_cursor_auto_timer() -> void:
 	cursor_auto_timer = randf_range(cursor_steal_auto_min, cursor_steal_auto_max)
 
 
+func reset_cursor_chase_cooldown() -> void:
+	cursor_chase_cooldown = randf_range(
+		cursor_chase_cooldown_min,
+		cursor_chase_cooldown_max
+	)
+
+
 func steal_cursor() -> void:
 	if not cursor_steal_enabled or cursor_stealing or dragging or eating:
 		return
+
+	if cursor_chasing:
+		_stop_cursor_chase()
 
 	var stop_path := _user_path(CURSOR_STOP_NAME)
 	if FileAccess.file_exists(stop_path):
@@ -1182,18 +1211,98 @@ func update_cursor_steal(delta: float) -> void:
 
 		return
 
-	if not cursor_steal_auto_enabled:
+	if cursor_chasing:
+		return
+
+	if not cursor_steal_auto_enabled or not cursor_steal_enabled:
 		return
 
 	cursor_auto_timer -= delta
-	if cursor_auto_timer > 0.0 or not can_start_jump() or walking:
-		return
+	cursor_chase_cooldown -= delta
 
 	var mouse_position := Vector2(DisplayServer.mouse_get_position())
-	if mouse_position.distance_to(desktop_position) <= PET_RADIUS:
-		steal_cursor()
+	var horizontal_distance := absf(mouse_position.x - desktop_position.x)
 
-	reset_cursor_auto_timer()
+	if (
+		cursor_auto_timer <= 0.0
+		and horizontal_distance <= PET_RADIUS * 0.75
+		and can_start_jump()
+		and not walking
+	):
+		steal_cursor()
+		reset_cursor_auto_timer()
+		reset_cursor_chase_cooldown()
+		return
+
+	if (
+		cursor_chase_enabled
+		and cursor_chase_cooldown <= 0.0
+		and horizontal_distance <= cursor_chase_radius
+		and can_start_jump()
+		and not walking
+	):
+		start_cursor_chase()
+		reset_cursor_chase_cooldown()
+
+
+func start_cursor_chase() -> void:
+	if not cursor_steal_enabled or not cursor_chase_enabled:
+		return
+
+	if cursor_chasing or cursor_stealing or dragging or eating:
+		return
+
+	cursor_chasing = true
+	cursor_chase_timer = cursor_chase_timeout
+	walking = true
+	velocity.x = 0.0
+	walk_dust_timer = 0.0
+	reset_jump_timer()
+
+
+func update_cursor_chase(delta: float) -> void:
+	cursor_chase_timer -= delta
+
+	var mouse_x := float(DisplayServer.mouse_get_position().x)
+	var delta_x := mouse_x - desktop_position.x
+	var horizontal_distance := absf(delta_x)
+	var direction := 0.0 if horizontal_distance < 1.0 else signf(delta_x)
+
+	velocity.x = direction * cursor_chase_speed
+	desktop_position.x = clampf(
+		desktop_position.x + velocity.x * delta,
+		desktop_min.x,
+		desktop_max.x
+	)
+
+	if direction != 0.0:
+		sprite.flip_h = direction < 0.0
+
+	walk_dust_timer -= delta
+	if walk_dust_timer <= 0.0:
+		burst_dust("bottom")
+		walk_dust_timer = 0.5
+
+	if horizontal_distance <= PET_RADIUS * 0.75:
+		_stop_cursor_chase()
+		steal_cursor()
+		return
+
+	if cursor_chase_timer <= 0.0:
+		_stop_cursor_chase()
+
+
+func _stop_cursor_chase() -> void:
+	if not cursor_chasing:
+		return
+
+	cursor_chasing = false
+	cursor_chase_timer = 0.0
+	walking = false
+	velocity.x = 0.0
+	reset_walk_pause_timer()
+	reset_jump_timer()
+	reset_cursor_chase_cooldown()
 
 
 func _stop_cursor_steal() -> void:
@@ -1232,6 +1341,9 @@ func steal_tab() -> void:
 		float(info["left"]) + 140.0,
 		float(info["top"]) + 18.0
 	)
+
+	if cursor_chasing:
+		_stop_cursor_chase()
 
 	eating = true
 	walking = false
