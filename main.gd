@@ -224,8 +224,12 @@ func _setup_particles() -> void:
 	dust_particles.scale_amount_max = 1.4
 	dust_particles.color = Color("#d8d1bf")
 	dust_particles.color_ramp = _make_fade_gradient(0.85)
-	dust_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-	dust_particles.emission_rect_extents = Vector2(18.0, 3.0)
+	dust_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINTS
+	dust_particles.emission_points = PackedVector2Array([
+		Vector2(-56.0, 0.0),
+		Vector2(56.0, 0.0),
+		Vector2(0.0, -56.0)
+	])
 	effects_layer.add_child(dust_particles)
 
 	crumb_particles = CPUParticles2D.new()
@@ -254,6 +258,12 @@ func _setup_particles() -> void:
 	crumb_particles.scale_amount_max = 1.5
 	crumb_particles.color = Color("#d9dde3")
 	crumb_particles.color_ramp = _make_fade_gradient(1.0)
+	crumb_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINTS
+	crumb_particles.emission_points = PackedVector2Array([
+		Vector2(-14.0, 0.0),
+		Vector2(14.0, 0.0),
+		Vector2(0.0, -14.0)
+	])
 	effects_layer.add_child(crumb_particles)
 
 
@@ -373,7 +383,7 @@ func handle_physics(delta: float) -> void:
 		jump_launch = false
 
 		if impact_speed > settling_threshold:
-			burst_dust(desktop_position + Vector2(0, 56.0))
+			burst_dust(desktop_position)
 
 		if impact_speed >= landing_threshold and not self_jump:
 			# Remember the hard impact, but keep bouncing. The celebration
@@ -424,7 +434,7 @@ func handle_ground_movement(delta: float) -> void:
 
 		walk_dust_timer -= delta
 		if walk_dust_timer <= 0.0:
-			burst_dust(desktop_position + Vector2(0, 56.0))
+			burst_dust(desktop_position)
 			walk_dust_timer = 0.6
 
 		walk_timer -= delta
@@ -504,7 +514,7 @@ func start_jump() -> void:
 	velocity.y = -randf_range(jump_speed_min, jump_speed_max)
 	sprite.flip_h = velocity.x < 0.0
 
-	burst_dust(desktop_position + Vector2(0, 56.0))
+	burst_dust(desktop_position)
 
 	reset_jump_timer()
 	reset_walk_pause_timer()
