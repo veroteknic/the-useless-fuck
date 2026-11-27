@@ -24,6 +24,7 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 - Add pause, mischief, gag, content, and frequency controls to the right-click menu.
 - Correct the animation documentation: `jumping` exists; `eating` remains optional.
 - Switch Jeremy's speech bubble, menu, and tab gag to an embedded Silkscreen pixel font with crisp, unantialiased rendering.
+- Move walk/jump/fall into one director-ticked LocomotionBehavior; main.gd is now the input/window/drawing adapter for locomotion.
 
 ## 2026-11-27
 

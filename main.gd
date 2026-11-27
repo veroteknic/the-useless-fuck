@@ -3,6 +3,7 @@ extends Node2D
 const NotepadManagerScript = preload("res://notepad_manager.gd")
 const JeremyMenuScript = preload("res://jeremy_menu.gd")
 const BehaviorDirectorScript = preload("res://behavior_director.gd")
+const LocomotionBehaviorScript = preload("res://locomotion_behavior.gd")
 const PixelUIScript = preload("res://pixel_ui.gd")
 
 @onready var camera: Camera2D = $Camera2D
@@ -241,6 +242,11 @@ func _ready() -> void:
 		director_config.set("allow_cursor_chase", cursor_chase_enabled)
 		director_config.set("allow_notes", notepads_enabled)
 
+	# One continuous behaviour owns walk/jump/fall from here on. main.gd only
+	# feeds the director input/window state and asks it to tick behaviours.
+	var locomotion_behavior = LocomotionBehaviorScript.new("locomotion", behavior_director)
+	behavior_director.call("register_behavior", locomotion_behavior)
+
 	if notepad_manager != null:
 		notepad_manager.set("note_read_callback", Callable(self, "_on_note_read"))
 		if behavior_director != null:
@@ -308,8 +314,6 @@ func _process(delta: float) -> void:
 
 	if dragging:
 		handle_dragging(delta)
-	else:
-		handle_physics(delta)
 
 	update_animation(delta)
 	update_squash_stretch(delta)
@@ -674,98 +678,6 @@ func update_desktop_bounds() -> void:
 	apply_active_screen_bounds()
 
 
-func handle_physics(delta: float) -> void:
-	if edge_hanging:
-		update_edge_hang(delta)
-		return
-
-	if edge_peeking:
-		update_edge_peek(delta)
-		return
-
-	if grounded:
-		desktop_position.y = desktop_max.y
-		velocity.y = 0.0
-		handle_ground_movement(delta)
-
-		airborne = false
-		return
-
-	airborne = true
-
-	velocity.y += gravity * delta
-	desktop_position += velocity * delta
-	sync_active_screen()
-
-	# Left wall.
-	if desktop_position.x < desktop_min.x:
-		var left_impact_speed := absf(velocity.x)
-		desktop_position.x = desktop_min.x
-		velocity.x = absf(velocity.x) * bounce
-		if left_impact_speed > settling_threshold:
-			burst_dust("left")
-			if maybe_start_wall_behavior("left", left_impact_speed):
-				return
-
-	# Right wall.
-	if desktop_position.x > desktop_max.x:
-		var right_impact_speed := absf(velocity.x)
-		desktop_position.x = desktop_max.x
-		velocity.x = -absf(velocity.x) * bounce
-		if right_impact_speed > settling_threshold:
-			burst_dust("right")
-			if maybe_start_wall_behavior("right", right_impact_speed):
-				return
-
-	# Ceiling.
-	if desktop_position.y < desktop_min.y:
-		var ceiling_impact_speed := absf(velocity.y)
-		desktop_position.y = desktop_min.y
-		velocity.y = absf(velocity.y) * bounce
-		if ceiling_impact_speed > settling_threshold:
-			burst_dust("top")
-			if maybe_start_ceiling_peek(ceiling_impact_speed):
-				return
-
-	# Floor.
-	if desktop_position.y >= desktop_max.y:
-		var impact_speed := maxf(velocity.y, 0.0)
-
-		desktop_position.y = desktop_max.y
-		jump_launch = false
-
-		if impact_speed > settling_threshold:
-			burst_dust("bottom")
-
-		if squash_stretch_enabled:
-			squash = maxf(
-				squash,
-				clampf(impact_speed / maxf(landing_threshold, 1.0), 0.0, 1.0) * squash_strength
-			)
-
-		if impact_speed >= landing_threshold and not self_jump:
-			# Remember the hard impact, but keep bouncing. The celebration
-			# fires only when this fall finally settles on the floor.
-			start_celebration()
-
-		if impact_speed <= settling_threshold:
-			velocity.y = 0.0
-			grounded = true
-			airborne = false
-			walking = false
-			self_jump = false
-			reset_walk_pause_timer()
-			reset_jump_timer()
-
-			if celebrating and sprite.animation != "thumbs up!":
-				speak("say_random_landing")
-				play_animation("thumbs up!")
-		else:
-			velocity.y = -impact_speed * bounce
-			grounded = false
-			airborne = true
-
-
 func maybe_start_wall_behavior(side: String, impact_speed: float) -> bool:
 	if not edge_behaviors_enabled:
 		return false
@@ -910,95 +822,6 @@ func update_squash_stretch(delta: float) -> void:
 	)
 
 
-func handle_ground_movement(delta: float) -> void:
-	if cursor_chasing:
-		update_cursor_chase(delta)
-		return
-
-	jump_timer -= delta
-
-	if jump_timer <= 0.0:
-		if can_start_jump():
-			start_jump()
-			return
-
-		reset_jump_timer()
-
-	if walking:
-		velocity.x = walk_direction * walk_speed
-		desktop_position.x += velocity.x * delta
-		sync_active_screen()
-
-		# Turn around instead of walking off the desktop.
-		if desktop_position.x <= desktop_min.x:
-			desktop_position.x = desktop_min.x
-			walk_direction = 1.0
-		elif desktop_position.x >= desktop_max.x:
-			desktop_position.x = desktop_max.x
-			walk_direction = -1.0
-
-		sprite.flip_h = walk_direction < 0.0
-
-		walk_dust_timer -= delta
-		if walk_dust_timer <= 0.0:
-			burst_dust("bottom")
-			walk_dust_timer = 0.6
-
-		walk_timer -= delta
-		if walk_timer <= 0.0:
-			stop_walking()
-		return
-
-	velocity.x = move_toward(velocity.x, 0.0, 1200.0 * delta)
-
-	if absf(velocity.x) < 1.0:
-		velocity.x = 0.0
-
-	desktop_position.x += velocity.x * delta
-	sync_active_screen()
-
-	# Landed slides still need to respect the screen edges.
-	if desktop_position.x < desktop_min.x:
-		desktop_position.x = desktop_min.x
-		velocity.x = 0.0
-	elif desktop_position.x > desktop_max.x:
-		desktop_position.x = desktop_max.x
-		velocity.x = 0.0
-
-	walk_pause_timer -= delta
-	if walk_pause_timer <= 0.0 and not dragging and not eating:
-		start_walking()
-
-
-func start_walking() -> void:
-	if (
-		not grounded
-		or dragging
-		or eating
-		or celebrating
-		or speaking
-		or chattering
-		or edge_hanging
-		or edge_peeking
-		or cursor_stealing
-		or cursor_chasing
-	):
-		return
-
-	walking = true
-	walk_direction = [-1.0, 1.0].pick_random()
-	walk_timer = randf_range(walk_duration_min, walk_duration_max)
-	walk_dust_timer = 0.0
-	velocity.x = walk_direction * walk_speed
-	sprite.flip_h = walk_direction < 0.0
-
-
-func stop_walking() -> void:
-	walking = false
-	velocity.x = 0.0
-	reset_walk_pause_timer()
-
-
 func get_config_number(key: String, fallback: float) -> float:
 	if behavior_director == null:
 		return fallback
@@ -1034,56 +857,28 @@ func scaled_interval(
 	return randf_range(min_value, max_value) / maxf(frequency, 0.05)
 
 
+# Locomotion wrappers: other systems still ask for these timers/guards, but
+# the decision itself lives in the director-owned LocomotionBehavior.
 func reset_walk_pause_timer() -> void:
-	walk_pause_timer = scaled_interval(
-		walk_pause_min,
-		walk_pause_max,
-		"activity_frequency"
-	)
+	if behavior_director != null:
+		behavior_director.call(
+			"call_behavior_method", "locomotion", "reset_walk_pause_timer"
+		)
 
 
 func reset_jump_timer() -> void:
-	jump_timer = scaled_interval(
-		jump_interval_min,
-		jump_interval_max,
-		"activity_frequency"
-	)
+	if behavior_director != null:
+		behavior_director.call(
+			"call_behavior_method", "locomotion", "reset_jump_timer"
+		)
 
 
 func can_start_jump() -> bool:
-	return (
-		grounded
-		and not dragging
-		and not eating
-		and not celebrating
-		and not speaking
-		and not chattering
-		and not edge_hanging
-		and not edge_peeking
-		and not cursor_stealing
-		and not cursor_chasing
-	)
-
-
-func start_jump() -> void:
-	if not can_start_jump():
-		return
-
-	walking = false
-	grounded = false
-	airborne = true
-	self_jump = true
-	jump_launch = true
-
-	var direction: float = [-1.0, 1.0].pick_random()
-	velocity.x = direction * randf_range(jump_horizontal_min, jump_horizontal_max)
-	velocity.y = -randf_range(jump_speed_min, jump_speed_max)
-	sprite.flip_h = velocity.x < 0.0
-
-	burst_dust("bottom")
-
-	reset_jump_timer()
-	reset_walk_pause_timer()
+	if behavior_director == null:
+		return false
+	return bool(behavior_director.call(
+		"call_behavior_method", "locomotion", "can_start_jump"
+	))
 
 
 func _on_body_input_event(
@@ -1223,8 +1018,8 @@ func handle_dragging(delta: float) -> void:
 
 	if not drag_moved:
 		if mouse_position.distance_to(drag_start_mouse) <= DRAG_MOVE_THRESHOLD:
-			# Still a plain press, not a drag. Let physics keep running.
-			handle_physics(delta)
+			# Still a plain press. The director already ticked locomotion this
+			# frame, so there is nothing extra to do here.
 			last_mouse_position = mouse_position
 			return
 

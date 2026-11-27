@@ -23,6 +23,7 @@ var behaviors := {}
 var cooldowns := {}
 var active_state := "idle"
 var previous_state := ""
+var behavior_running := {}
 var history: Array[Dictionary] = []
 
 var mood := 0.0
@@ -48,11 +49,42 @@ func tick(delta: float) -> void:
 
 	mood = move_toward(mood, 0.0, 0.02 * delta)
 
+	if is_paused():
+		for key in behaviors.keys():
+			if bool(behavior_running.get(str(key), false)):
+				behavior_running[str(key)] = false
+				_record_history("behavior:" + str(key) + ":stop")
+	else:
+		_tick_behaviors(delta)
+
 	var next_state := get_state()
 	if next_state != active_state:
 		previous_state = active_state
 		active_state = next_state
 		_record_history("state:" + next_state)
+
+
+func _tick_behaviors(delta: float) -> void:
+	if pet == null or not is_instance_valid(pet):
+		return
+
+	var ctx := {"pet": pet}
+
+	for id in behaviors.keys():
+		var key := str(id)
+		var behavior = behaviors[id]
+		if behavior == null or not behavior.has_method("tick"):
+			continue
+
+		var was_running := bool(behavior_running.get(key, false))
+		var status = behavior.call("tick", delta, ctx)
+		var running := int(status) == int(PetBehaviorScript.Status.RUNNING)
+
+		if running != was_running:
+			behavior_running[key] = running
+			_record_history(
+				"behavior:" + key + (":start" if running else ":stop")
+			)
 
 
 func request_behavior(action: String, args: Array = []) -> bool:
@@ -167,7 +199,17 @@ func register_behavior(behavior) -> void:
 
 	behavior.director = self
 	behavior.config = config
-	behaviors[str(behavior.id)] = behavior
+
+	var key := str(behavior.id)
+	behaviors[key] = behavior
+	behavior_running[key] = false
+
+
+func call_behavior_method(id: String, method: String, args: Array = []):
+	var behavior = behaviors.get(str(id))
+	if behavior == null or not behavior.has_method(method):
+		return null
+	return behavior.callv(method, args)
 
 
 func create_behavior(id: String):
@@ -233,6 +275,7 @@ func get_status() -> Dictionary:
 		"state": get_state(),
 		"active_behavior": active_state,
 		"previous_behavior": previous_state,
+		"running_behaviors": behavior_running.duplicate(),
 		"grounded": _flag("grounded"),
 		"airborne": _flag("airborne"),
 		"walking": _flag("walking"),

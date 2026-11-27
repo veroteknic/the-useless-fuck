@@ -13,6 +13,8 @@ The right-click window has buttons for stealing the cursor, forcing a chase, wri
 
 Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling, tug a nearby cursor, and write himself real Windows Notepad windows. His idle chatter notices the time of day, weekdays, and weekends. Tabs he eats are counted per day.
 
+Walking, jumping, and falling are owned by a single director-ticked `LocomotionBehavior`. `main.gd` stays the adapter for input, window placement, drag/eating/cursor hooks, and drawing. The action/status window shows which behaviours are currently running.
+
 Animations are separated in `jeremy_sprite_frames.tres`: `default`, `talkin`, `thumbs up!`, `flailing`, `falling`, `walking`, and `jumping`. An optional `eating` frame would be picked up automatically if added later. The editable art source is included as `jeremy.aseprite`.
 
 Jeremy's speech bubble, menu, and tab gag use an embedded Silkscreen pixel font, so they stay chunky and readable in the self-contained exe. The font is licensed under the SIL Open Font License 1.1; its notice is included at `assets/fonts/OFL.txt`. Notepad notes remain real Notepad windows and use Notepad's own font.

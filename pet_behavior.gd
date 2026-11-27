@@ -1,9 +1,9 @@
 class_name PetBehavior
 extends RefCounted
 
-# Base contract for future autonomous behaviours. Phase 1 introduces the
-# contract and director registration only; existing movement stays in main.gd
-# until its behaviour wrappers are migrated in later phases.
+# Base contract for autonomous behaviours. The behaviour director ticks
+# registered instances each frame; locomotion now lives in its own subclass
+# while input, window placement, and visual effects stay in main.gd.
 
 enum Status {
 	IDLE,

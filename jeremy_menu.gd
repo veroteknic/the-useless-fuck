@@ -179,6 +179,7 @@ func refresh_status() -> void:
 	var lines := [
 		"state: " + str(status.get("state", "unknown")),
 		"behavior: " + str(status.get("active_behavior", "unknown")),
+		"running: " + str(status.get("running_behaviors", {})),
 		"paused: " + str(status.get("paused", false)),
 		"mischief: " + str(status.get("mischief", true)),
 		"mood: " + str(status.get("mood_label", "meh")) + " (" + ("%.2f" % float(status.get("mood", 0.0))) + ")",
