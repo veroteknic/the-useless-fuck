@@ -10,7 +10,7 @@ Jeremy wanders and hops around on his own.
 
 Animations are separated in `jeremy_sprite_frames.tres`. Optional animations named `jumping` and `eating` are picked up automatically when added. The editable art source is included as `jeremy.aseprite`.
 
-Tiny dust puffs drift in from the left, right, or top edge of the screen when Jeremy walks, jumps, and bounces. Eating a tab throws crumbs from a random screen edge too. Particles can be turned off with `particles_enabled` on the root script.
+Dust puffs appear on the exact screen edge Jeremy hits: left, right, top, or bottom. Walking and jumping kick up a little dust from the bottom edge. Eating a tab throws crumbs from a random edge. Particles can be turned off with `particles_enabled` on the root script.
 
 ## Download
 

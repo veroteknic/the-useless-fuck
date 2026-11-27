@@ -286,46 +286,49 @@ func update_particle_positions() -> void:
 		crumb_particles.position = crumb_origin - window_position
 
 
-func _screen_edge_spawn() -> Dictionary:
-	var inset := 12.0
-	var margin := 60.0
-	var y_min := desktop_min.y + margin
-	var y_max := maxf(y_min, desktop_max.y - margin)
-	var x_min := desktop_min.x + margin
-	var x_max := maxf(x_min, desktop_max.x - margin)
+func _edge_spawn(side: String) -> Dictionary:
+	var inset := 10.0
 
-	match randi() % 3:
-		0:
+	match side:
+		"left":
 			return {
 				"position": Vector2(
 					desktop_min.x + inset,
-					randf_range(y_min, y_max)
+					desktop_position.y
 				),
 				"direction": Vector2.RIGHT
 			}
-		1:
+		"right":
 			return {
 				"position": Vector2(
 					desktop_max.x - inset,
-					randf_range(y_min, y_max)
+					desktop_position.y
 				),
 				"direction": Vector2.LEFT
 			}
-		_:
+		"top":
 			return {
 				"position": Vector2(
-					randf_range(x_min, x_max),
+					desktop_position.x,
 					desktop_min.y + inset
 				),
 				"direction": Vector2.DOWN
 			}
+		_:
+			return {
+				"position": Vector2(
+					desktop_position.x,
+					desktop_max.y - inset
+				),
+				"direction": Vector2.UP
+			}
 
 
-func burst_dust() -> void:
+func burst_dust(side: String) -> void:
 	if not particles_enabled or dust_particles == null:
 		return
 
-	var spawn := _screen_edge_spawn()
+	var spawn := _edge_spawn(side)
 	dust_origin = spawn["position"]
 	dust_origin_set = true
 	dust_particles.direction = spawn["direction"]
@@ -338,7 +341,7 @@ func burst_crumbs() -> void:
 	if not particles_enabled or crumb_particles == null:
 		return
 
-	var spawn := _screen_edge_spawn()
+	var spawn := _edge_spawn(["left", "right", "top"].pick_random())
 	crumb_origin = spawn["position"]
 	crumb_origin_set = true
 	crumb_particles.direction = spawn["direction"]
@@ -391,18 +394,27 @@ func handle_physics(delta: float) -> void:
 
 	# Left wall.
 	if desktop_position.x < desktop_min.x:
+		var left_impact_speed := absf(velocity.x)
 		desktop_position.x = desktop_min.x
 		velocity.x = absf(velocity.x) * bounce
+		if left_impact_speed > settling_threshold:
+			burst_dust("left")
 
 	# Right wall.
 	if desktop_position.x > desktop_max.x:
+		var right_impact_speed := absf(velocity.x)
 		desktop_position.x = desktop_max.x
 		velocity.x = -absf(velocity.x) * bounce
+		if right_impact_speed > settling_threshold:
+			burst_dust("right")
 
 	# Ceiling.
 	if desktop_position.y < desktop_min.y:
+		var ceiling_impact_speed := absf(velocity.y)
 		desktop_position.y = desktop_min.y
 		velocity.y = absf(velocity.y) * bounce
+		if ceiling_impact_speed > settling_threshold:
+			burst_dust("top")
 
 	# Floor.
 	if desktop_position.y >= desktop_max.y:
@@ -412,7 +424,7 @@ func handle_physics(delta: float) -> void:
 		jump_launch = false
 
 		if impact_speed > settling_threshold:
-			burst_dust()
+			burst_dust("bottom")
 
 		if impact_speed >= landing_threshold and not self_jump:
 			# Remember the hard impact, but keep bouncing. The celebration
@@ -463,7 +475,7 @@ func handle_ground_movement(delta: float) -> void:
 
 		walk_dust_timer -= delta
 		if walk_dust_timer <= 0.0:
-			burst_dust()
+			burst_dust("bottom")
 			walk_dust_timer = 0.6
 
 		walk_timer -= delta
@@ -543,7 +555,7 @@ func start_jump() -> void:
 	velocity.y = -randf_range(jump_speed_min, jump_speed_max)
 	sprite.flip_h = velocity.x < 0.0
 
-	burst_dust()
+	burst_dust("bottom")
 
 	reset_jump_timer()
 	reset_walk_pause_timer()
