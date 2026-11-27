@@ -19,7 +19,7 @@ Dust puffs appear exactly where Jeremy's collision circle touches the screen: le
 
 **Windows:** https://github.com/veroteknic/the-useless-fuck/releases/latest/download/jeremy.exe
 
-Every push to a branch builds a fresh self-contained `jeremy.exe` and replaces the asset on the `latest` release, so the link above always points at the newest build. Each successful build also creates an immutable versioned release (`v0.1.<run number>`) with its own exe and generated changelog. See [releases](https://github.com/veroteknic/the-useless-fuck/releases) for version history or [CHANGELOG.md](CHANGELOG.md) for the readable summary.
+Every push to a branch builds a fresh self-contained `jeremy.exe` and replaces the asset on the `latest` release, so the link above always points at the newest build. Each successful build also creates a distinct versioned release (`v0.1.<run number>`) with its own exe and generated changelog. See [releases](https://github.com/veroteknic/the-useless-fuck/releases) for version history or [CHANGELOG.md](CHANGELOG.md) for the readable summary.
 
 ## Development
 
