@@ -287,13 +287,11 @@ func update_particle_positions() -> void:
 
 
 func _edge_spawn(side: String) -> Dictionary:
-	var inset := 10.0
-
 	match side:
 		"left":
 			return {
 				"position": Vector2(
-					desktop_min.x + inset,
+					desktop_min.x - PET_RADIUS,
 					desktop_position.y
 				),
 				"direction": Vector2.RIGHT
@@ -301,7 +299,7 @@ func _edge_spawn(side: String) -> Dictionary:
 		"right":
 			return {
 				"position": Vector2(
-					desktop_max.x - inset,
+					desktop_max.x + PET_RADIUS,
 					desktop_position.y
 				),
 				"direction": Vector2.LEFT
@@ -310,7 +308,7 @@ func _edge_spawn(side: String) -> Dictionary:
 			return {
 				"position": Vector2(
 					desktop_position.x,
-					desktop_min.y + inset
+					desktop_min.y - PET_RADIUS
 				),
 				"direction": Vector2.DOWN
 			}
@@ -318,7 +316,7 @@ func _edge_spawn(side: String) -> Dictionary:
 			return {
 				"position": Vector2(
 					desktop_position.x,
-					desktop_max.y - inset
+					desktop_max.y + PET_RADIUS
 				),
 				"direction": Vector2.UP
 			}
