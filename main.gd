@@ -12,6 +12,7 @@ const BehaviorDirectorScript = preload("res://behavior_director.gd")
 
 const WINDOW_SIZE := Vector2i(400, 360)
 const PET_RADIUS := 60.0
+const CURSOR_FACE_OFFSET := Vector2(0.0, -24.0)
 const PET_LOCAL_POSITION := Vector2(200, 240)
 const DRAG_MOVE_THRESHOLD := 6.0
 const EAT_ANIMATION := "eating"
@@ -189,8 +190,8 @@ var cursor_ps := "\n".join([
 	'    if ($tx -lt -10000 -or $tx -gt 10000 -or $ty -lt -10000 -or $ty -gt 10000) { Start-Sleep -Milliseconds $StepMs; continue }',
 	'    $p = New-Object JeremyCursor+POINT',
 	'    if ([JeremyCursor]::GetCursorPos([ref]$p)) {',
-	'      $nx = [int]($p.X + ($tx - $p.X) * 0.28)',
-	'      $ny = [int]($p.Y + ($ty - $p.Y) * 0.28)',
+	'      $nx = [int]($p.X + ($tx - $p.X) * 1.0)',
+	'      $ny = [int]($p.Y + ($ty - $p.Y) * 1.0)',
 	'      [JeremyCursor]::SetCursorPos($nx, $ny) | Out-Null',
 	'    }',
 	'  }',
@@ -1207,9 +1208,10 @@ func _write_cursor_target() -> void:
 	if file == null:
 		return
 
+	var target := desktop_position + CURSOR_FACE_OFFSET
 	file.store_string("%d,%d;" % [
-		roundi(desktop_position.x),
-		roundi(desktop_position.y)
+		roundi(target.x),
+		roundi(target.y)
 	])
 	file.close()
 
@@ -1225,8 +1227,16 @@ func reset_cursor_chase_cooldown() -> void:
 	)
 
 
-func steal_cursor() -> bool:
+func mouse_touches_pet() -> bool:
+	var mouse_position := Vector2(DisplayServer.mouse_get_position())
+	return mouse_position.distance_to(desktop_position) <= PET_RADIUS
+
+
+func steal_cursor(require_contact: bool = false) -> bool:
 	if not cursor_steal_enabled or cursor_stealing or dragging or eating:
+		return false
+
+	if require_contact and not mouse_touches_pet():
 		return false
 
 	if cursor_chasing:
@@ -1292,11 +1302,11 @@ func update_cursor_steal(delta: float) -> void:
 
 	if (
 		cursor_auto_timer <= 0.0
-		and horizontal_distance <= PET_RADIUS * 0.75
+		and mouse_touches_pet()
 		and can_start_jump()
 		and not walking
 	):
-		if steal_cursor():
+		if steal_cursor(true):
 			reset_cursor_auto_timer()
 			reset_cursor_chase_cooldown()
 		return
@@ -1351,9 +1361,9 @@ func update_cursor_chase(delta: float) -> void:
 		burst_dust("bottom")
 		walk_dust_timer = 0.5
 
-	if horizontal_distance <= PET_RADIUS * 0.75:
+	if mouse_touches_pet():
 		_stop_cursor_chase()
-		steal_cursor()
+		steal_cursor(true)
 		return
 
 	if cursor_chase_timer <= 0.0:
