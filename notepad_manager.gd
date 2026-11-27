@@ -1,17 +1,23 @@
 extends Node
 
-# Jeremy writes himself little sticky notes. Each note is its own native
-# always-on-top, no-focus window so it can live anywhere on the desktop without
-# stealing keyboard focus from the browser.
+# Jeremy writes himself little notes in actual Windows Notepad. Each note is a
+# real .txt file opened by notepad.exe, positioned near the pointer, with focus
+# gently returned to whatever the human was using.
 
 @export var notes_enabled := true
 @export var max_notes := 3
-@export var note_lifetime := 20.0
+@export var note_lifetime := 0.0
 @export var note_interval_min := 28.0
 @export var note_interval_max := 60.0
+@export var restore_previous_focus := true
+
+const NOTE_DIR_NAME := "jeremy_notes"
+const LAUNCH_SCRIPT_NAME := "jeremy_open_notepad.ps1"
+const CLOSE_SCRIPT_NAME := "jeremy_close_notepad.ps1"
 
 var notes: Array[Dictionary] = []
 var next_note_timer := 0.0
+var next_note_number := 1
 
 var note_lines := [
 	"note to self: the floor is friendly.",
@@ -61,6 +67,63 @@ var late_note_lines := [
 	"note to self: i'll keep watch.",
 ]
 
+var launch_ps := "\n".join([
+	"param([string]$FilePath, [string]$InfoFile, [int]$X, [int]$Y, [int]$Width, [int]$Height, [int]$RestoreFocus)",
+	"Add-Type @\"",
+	"using System;",
+	"using System.Runtime.InteropServices;",
+	"public static class JeremyNotepad {",
+	"  [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow();",
+	"  [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);",
+	"  [DllImport(\"user32.dll\")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);",
+	"  [DllImport(\"user32.dll\")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);",
+	"}",
+	"\"@",
+	"$previous = [IntPtr]::Zero",
+	"if ($RestoreFocus -ne 0) { $previous = [JeremyNotepad]::GetForegroundWindow() }",
+	"",
+	"$psi = New-Object System.Diagnostics.ProcessStartInfo",
+	"$psi.FileName = \"notepad.exe\"",
+	"$psi.Arguments = '\"' + $FilePath + '\"'",
+	"$psi.UseShellExecute = $false",
+	"$psi.CreateNoWindow = $false",
+	"$proc = [System.Diagnostics.Process]::Start($psi)",
+	"",
+	"$hwnd = [IntPtr]::Zero",
+	"for ($i = 0; $i -lt 60; $i++) {",
+	"  $proc.Refresh()",
+	"  $hwnd = $proc.MainWindowHandle",
+	"  if ($hwnd -ne [IntPtr]::Zero) { break }",
+	"  Start-Sleep -Milliseconds 50",
+	"}",
+	"",
+	"if ($hwnd -ne [IntPtr]::Zero) {",
+	"  [JeremyNotepad]::ShowWindowAsync($hwnd, 4) | Out-Null",
+	"  [JeremyNotepad]::SetWindowPos($hwnd, [IntPtr]::Zero, $X, $Y, $Width, $Height, 0x0004 -bor 0x0010) | Out-Null",
+	"}",
+	"",
+	"if ($RestoreFocus -ne 0 -and $previous -ne [IntPtr]::Zero) {",
+	"  [JeremyNotepad]::SetForegroundWindow($previous) | Out-Null",
+	"}",
+	"",
+	"\"pid=$($proc.Id)\"",
+	"\"hwnd=$($hwnd.ToInt64())\""
+])
+
+var close_ps := "\n".join([
+	"param([long]$Handle)",
+	"Add-Type @\"",
+	"using System;",
+	"using System.Runtime.InteropServices;",
+	"public static class JeremyNotepadCloser {",
+	"  [DllImport(\"user32.dll\")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);",
+	"}",
+	"\"@",
+	"if ($Handle -ne 0) {",
+	"  [JeremyNotepadCloser]::PostMessage([IntPtr]$Handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null",
+	"}"
+])
+
 
 func _ready() -> void:
 	reset_note_timer()
@@ -74,6 +137,9 @@ func _process(delta: float) -> void:
 	if next_note_timer <= 0.0:
 		write_note()
 		reset_note_timer()
+
+	if note_lifetime <= 0.0:
+		return
 
 	for i in range(notes.size() - 1, -1, -1):
 		var entry: Dictionary = notes[i]
@@ -90,81 +156,101 @@ func write_note(message: String = "") -> void:
 	if not notes_enabled:
 		return
 
-	if notes.size() >= max_notes and not notes.is_empty():
+	while max_notes > 0 and notes.size() >= max_notes and not notes.is_empty():
 		_close_note(notes[0])
 
 	var text := message if not message.is_empty() else _pick_note_text()
-	var note_window := Window.new()
-	note_window.title = "jeremy's note"
-	note_window.size = Vector2i(220, 116)
-	note_window.always_on_top = true
-	note_window.borderless = true
-	note_window.transparent = true
-	note_window.exclusive = false
-	note_window.transient = false
-
-	get_tree().root.add_child(note_window)
-	note_window.set_flag(Window.FLAG_NO_FOCUS, true)
-	note_window.set_flag(Window.FLAG_ALWAYS_ON_TOP, true)
-	note_window.set_flag(Window.FLAG_BORDERLESS, true)
-	note_window.set_flag(Window.FLAG_TRANSPARENT, true)
-	note_window.set_flag(Window.FLAG_MOUSE_PASSTHROUGH, true)
-
-	var panel := PanelContainer.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("#f2dc78")
-	style.border_color = Color("#c4a93f")
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(3)
-	style.content_margin_left = 14.0
-	style.content_margin_right = 14.0
-	style.content_margin_top = 12.0
-	style.content_margin_bottom = 10.0
-	panel.add_theme_stylebox_override("panel", style)
-	note_window.add_child(panel)
-
-	var layout := VBoxContainer.new()
-	layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	panel.add_child(layout)
-
-	var label := Label.new()
-	label.text = text
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	label.add_theme_font_size_override("font_size", 16)
-	label.add_theme_color_override("font_color", Color("#2d2819"))
-	layout.add_child(label)
-
-	var signature := Label.new()
-	signature.text = "- jeremy"
-	signature.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	signature.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	signature.add_theme_font_size_override("font_size", 12)
-	signature.add_theme_color_override("font_color", Color("#6b5a26"))
-	layout.add_child(signature)
+	var file_path := _write_note_file(text)
+	if file_path.is_empty():
+		return
 
 	var hint := Vector2(DisplayServer.mouse_get_position())
-	var target := _random_note_position(note_window.size, hint)
-	note_window.position = Vector2i(roundi(hint.x), roundi(hint.y))
+	var position := _random_note_position(Vector2i(420, 260), hint)
+	var info_file := _user_path("jeremy_notepad_info.txt")
+	var script_path := _write_user_script(LAUNCH_SCRIPT_NAME, launch_ps)
+	if script_path.is_empty():
+		return
 
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_BACK)
-	tween.set_ease(Tween.EASE_OUT)
-	tween.tween_property(note_window, "position", target, 0.42)
+	var output: Array[String] = []
+	OS.execute("powershell.exe", PackedStringArray([
+		"-NoProfile",
+		"-File",
+		script_path,
+		file_path,
+		info_file,
+		str(position.x),
+		str(position.y),
+		"420",
+		"260",
+		"1" if restore_previous_focus else "0"
+	]), output, true)
+
+	var info := _parse_info(output)
+	var pid := int(info.get("pid", "-1"))
+	var hwnd := int(info.get("hwnd", "0"))
 
 	notes.append({
-		"window": note_window,
-		"control": panel,
+		"file": file_path,
+		"pid": pid,
+		"hwnd": hwnd,
 		"remaining": note_lifetime,
 		"closing": false
 	})
+
+
+func _write_note_file(text: String) -> String:
+	var note_dir := ProjectSettings.globalize_path("user://" + NOTE_DIR_NAME)
+	DirAccess.make_dir_recursive_absolute(note_dir)
+
+	var date := Time.get_datetime_dict_from_system()
+	var stamp := "%04d%02d%02d_%02d%02d%02d" % [
+		int(date.get("year", 1970)),
+		int(date.get("month", 1)),
+		int(date.get("day", 1)),
+		int(date.get("hour", 0)),
+		int(date.get("minute", 0)),
+		int(date.get("second", 0))
+	]
+
+	var file_name := "jeremy-note-%s-%02d.txt" % [stamp, next_note_number]
+	next_note_number += 1
+
+	var path := note_dir + "\\" + file_name
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return ""
+
+	file.store_string("jeremy's notepad\n\n")
+	file.store_string(text + "\n\n")
+	file.store_string("- jeremy\n\n")
+	file.store_string("(he will probably write another one.)\n")
+	file.close()
+	return path
+
+
+func _parse_info(output: Array[String]) -> Dictionary:
+	var info := {}
+	for raw_line in output:
+		var line := str(raw_line).strip_edges()
+		var parts := line.split("=", true, 1)
+		if parts.size() == 2:
+			info[parts[0]] = parts[1]
+	return info
+
+
+func _user_path(file_name: String) -> String:
+	return ProjectSettings.globalize_path("user://" + file_name)
+
+
+func _write_user_script(file_name: String, script: String) -> String:
+	var path := _user_path(file_name)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return ""
+
+	file.store_string(script)
+	file.close()
+	return path
 
 
 func _pick_note_text() -> String:
@@ -183,11 +269,17 @@ func _random_note_position(window_size: Vector2i, hint: Vector2) -> Vector2i:
 	var screen_size := Vector2(DisplayServer.screen_get_size(screen))
 	var margin := 24.0
 
-	var max_x := maxf(screen_position.x + margin, screen_position.x + screen_size.x - float(window_size.x) - margin)
-	var max_y := maxf(screen_position.y + margin, screen_position.y + screen_size.y - float(window_size.y) - margin)
+	var max_x := maxf(
+		screen_position.x + margin,
+		screen_position.x + screen_size.x - float(window_size.x) - margin
+	)
+	var max_y := maxf(
+		screen_position.y + margin,
+		screen_position.y + screen_size.y - float(window_size.y) - margin
+	)
 
-	var x := clampf(hint.x + randf_range(-280.0, 280.0), screen_position.x + margin, max_x)
-	var y := clampf(hint.y + randf_range(-200.0, 200.0), screen_position.y + margin, max_y)
+	var x := clampf(hint.x + randf_range(-320.0, 320.0), screen_position.x + margin, max_x)
+	var y := clampf(hint.y + randf_range(-220.0, 220.0), screen_position.y + margin, max_y)
 	return Vector2i(roundi(x), roundi(y))
 
 
@@ -198,16 +290,17 @@ func _close_note(entry: Dictionary) -> void:
 	entry["closing"] = true
 	notes.erase(entry)
 
-	var note_window: Window = entry.get("window")
-	var panel: Control = entry.get("control")
-
-	if note_window == null:
+	var hwnd := int(entry.get("hwnd", 0))
+	if hwnd == 0:
 		return
 
-	if panel == null:
-		note_window.queue_free()
+	var script_path := _write_user_script(CLOSE_SCRIPT_NAME, close_ps)
+	if script_path.is_empty():
 		return
 
-	var tween := create_tween()
-	tween.tween_property(panel, "modulate:a", 0.0, 0.35)
-	tween.tween_callback(note_window.queue_free)
+	OS.execute("powershell.exe", PackedStringArray([
+		"-NoProfile",
+		"-File",
+		script_path,
+		str(hwnd)
+	]), [], true)

@@ -9,7 +9,7 @@ Jeremy wanders and hops around on his own.
 - Right-click while a browser is focused: he eats that tab.
 - Middle-click: he steals your cursor for a moment, then loses interest.
 
-Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling, tug a nearby cursor, and leave himself sticky notepads. His idle chatter notices the time of day, weekdays, and weekends. Tabs he eats are counted per day.
+Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling, tug a nearby cursor, and write himself real Windows Notepad windows. His idle chatter notices the time of day, weekdays, and weekends. Tabs he eats are counted per day.
 
 Animations are separated in `jeremy_sprite_frames.tres`. Optional animations named `jumping` and `eating` are picked up automatically when added. The editable art source is included as `jeremy.aseprite`.
 
