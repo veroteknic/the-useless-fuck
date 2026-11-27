@@ -210,7 +210,7 @@ func _setup_particles() -> void:
 	dust_particles.lifetime_randomness = 0.35
 	dust_particles.explosiveness = 1.0
 	dust_particles.direction = Vector2.RIGHT
-	dust_particles.spread = 360.0
+	dust_particles.spread = 50.0
 	dust_particles.initial_velocity_min = 35.0
 	dust_particles.initial_velocity_max = 110.0
 	dust_particles.gravity = Vector2(0, 70.0)
@@ -224,12 +224,7 @@ func _setup_particles() -> void:
 	dust_particles.scale_amount_max = 1.4
 	dust_particles.color = Color("#d8d1bf")
 	dust_particles.color_ramp = _make_fade_gradient(0.85)
-	dust_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINTS
-	dust_particles.emission_points = PackedVector2Array([
-		Vector2(-56.0, 0.0),
-		Vector2(56.0, 0.0),
-		Vector2(0.0, -56.0)
-	])
+	dust_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINT
 	effects_layer.add_child(dust_particles)
 
 	crumb_particles = CPUParticles2D.new()
@@ -243,8 +238,8 @@ func _setup_particles() -> void:
 	crumb_particles.lifetime = 0.85
 	crumb_particles.lifetime_randomness = 0.4
 	crumb_particles.explosiveness = 1.0
-	crumb_particles.direction = Vector2.UP
-	crumb_particles.spread = 120.0
+	crumb_particles.direction = Vector2.DOWN
+	crumb_particles.spread = 60.0
 	crumb_particles.initial_velocity_min = 60.0
 	crumb_particles.initial_velocity_max = 170.0
 	crumb_particles.gravity = Vector2(0, 520.0)
@@ -258,12 +253,7 @@ func _setup_particles() -> void:
 	crumb_particles.scale_amount_max = 1.5
 	crumb_particles.color = Color("#d9dde3")
 	crumb_particles.color_ramp = _make_fade_gradient(1.0)
-	crumb_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINTS
-	crumb_particles.emission_points = PackedVector2Array([
-		Vector2(-14.0, 0.0),
-		Vector2(14.0, 0.0),
-		Vector2(0.0, -14.0)
-	])
+	crumb_particles.emission_shape = CPUParticles2D.EMISSION_SHAPE_POINT
 	effects_layer.add_child(crumb_particles)
 
 
@@ -296,23 +286,62 @@ func update_particle_positions() -> void:
 		crumb_particles.position = crumb_origin - window_position
 
 
-func burst_dust(desktop_spawn_position: Vector2) -> void:
+func _screen_edge_spawn() -> Dictionary:
+	var inset := 12.0
+	var margin := 60.0
+	var y_min := desktop_min.y + margin
+	var y_max := maxf(y_min, desktop_max.y - margin)
+	var x_min := desktop_min.x + margin
+	var x_max := maxf(x_min, desktop_max.x - margin)
+
+	match randi() % 3:
+		0:
+			return {
+				"position": Vector2(
+					desktop_min.x + inset,
+					randf_range(y_min, y_max)
+				),
+				"direction": Vector2.RIGHT
+			}
+		1:
+			return {
+				"position": Vector2(
+					desktop_max.x - inset,
+					randf_range(y_min, y_max)
+				),
+				"direction": Vector2.LEFT
+			}
+		_:
+			return {
+				"position": Vector2(
+					randf_range(x_min, x_max),
+					desktop_min.y + inset
+				),
+				"direction": Vector2.DOWN
+			}
+
+
+func burst_dust() -> void:
 	if not particles_enabled or dust_particles == null:
 		return
 
-	dust_origin = desktop_spawn_position
+	var spawn := _screen_edge_spawn()
+	dust_origin = spawn["position"]
 	dust_origin_set = true
+	dust_particles.direction = spawn["direction"]
 	dust_particles.position = dust_origin - (desktop_position - PET_LOCAL_POSITION)
 	dust_particles.restart()
 	dust_particles.emitting = true
 
 
-func burst_crumbs(desktop_spawn_position: Vector2) -> void:
+func burst_crumbs() -> void:
 	if not particles_enabled or crumb_particles == null:
 		return
 
-	crumb_origin = desktop_spawn_position
+	var spawn := _screen_edge_spawn()
+	crumb_origin = spawn["position"]
 	crumb_origin_set = true
+	crumb_particles.direction = spawn["direction"]
 	crumb_particles.position = crumb_origin - (desktop_position - PET_LOCAL_POSITION)
 	crumb_particles.restart()
 	crumb_particles.emitting = true
@@ -383,7 +412,7 @@ func handle_physics(delta: float) -> void:
 		jump_launch = false
 
 		if impact_speed > settling_threshold:
-			burst_dust(desktop_position)
+			burst_dust()
 
 		if impact_speed >= landing_threshold and not self_jump:
 			# Remember the hard impact, but keep bouncing. The celebration
@@ -434,7 +463,7 @@ func handle_ground_movement(delta: float) -> void:
 
 		walk_dust_timer -= delta
 		if walk_dust_timer <= 0.0:
-			burst_dust(desktop_position)
+			burst_dust()
 			walk_dust_timer = 0.6
 
 		walk_timer -= delta
@@ -514,7 +543,7 @@ func start_jump() -> void:
 	velocity.y = -randf_range(jump_speed_min, jump_speed_max)
 	sprite.flip_h = velocity.x < 0.0
 
-	burst_dust(desktop_position)
+	burst_dust()
 
 	reset_jump_timer()
 	reset_walk_pause_timer()
@@ -817,7 +846,7 @@ func steal_tab() -> void:
 	# Let the visual tab reach his mouth before the real tab goes away.
 	await get_tree().create_timer(0.45).timeout
 	_close_active_tab()
-	burst_crumbs(desktop_position + Vector2(0, -12.0))
+	burst_crumbs()
 
 	await get_tree().create_timer(0.25).timeout
 	eating = false
