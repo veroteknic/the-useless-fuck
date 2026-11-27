@@ -10,6 +10,7 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 
 - Open Jeremy's notes in real Windows Notepad windows instead of custom sticky-note windows.
 - Keep Notepad from stealing keyboard focus from the browser.
+- Add top padding to notes, move them away from the top screen edge, and make the windows a bit smaller.
 
 ## 2026-11-27
 

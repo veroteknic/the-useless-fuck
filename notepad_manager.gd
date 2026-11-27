@@ -12,6 +12,7 @@ extends Node
 @export var restore_previous_focus := true
 
 const NOTE_DIR_NAME := "jeremy_notes"
+const NOTE_WINDOW_SIZE := Vector2i(380, 230)
 const LAUNCH_SCRIPT_NAME := "jeremy_open_notepad.ps1"
 const CLOSE_SCRIPT_NAME := "jeremy_close_notepad.ps1"
 
@@ -165,7 +166,7 @@ func write_note(message: String = "") -> void:
 		return
 
 	var hint := Vector2(DisplayServer.mouse_get_position())
-	var position := _random_note_position(Vector2i(420, 260), hint)
+	var position := _random_note_position(NOTE_WINDOW_SIZE, hint)
 	var info_file := _user_path("jeremy_notepad_info.txt")
 	var script_path := _write_user_script(LAUNCH_SCRIPT_NAME, launch_ps)
 	if script_path.is_empty():
@@ -180,8 +181,8 @@ func write_note(message: String = "") -> void:
 		info_file,
 		str(position.x),
 		str(position.y),
-		"420",
-		"260",
+		str(NOTE_WINDOW_SIZE.x),
+		str(NOTE_WINDOW_SIZE.y),
 		"1" if restore_previous_focus else "0"
 	]), output, true)
 
@@ -220,6 +221,7 @@ func _write_note_file(text: String) -> String:
 	if file == null:
 		return ""
 
+	file.store_string("\n\n")
 	file.store_string("jeremy's notepad\n\n")
 	file.store_string(text + "\n\n")
 	file.store_string("- jeremy\n\n")
@@ -268,18 +270,19 @@ func _random_note_position(window_size: Vector2i, hint: Vector2) -> Vector2i:
 	var screen_position := Vector2(DisplayServer.screen_get_position(screen))
 	var screen_size := Vector2(DisplayServer.screen_get_size(screen))
 	var margin := 24.0
+	var top_margin := 64.0
 
 	var max_x := maxf(
 		screen_position.x + margin,
 		screen_position.x + screen_size.x - float(window_size.x) - margin
 	)
 	var max_y := maxf(
-		screen_position.y + margin,
+		screen_position.y + top_margin,
 		screen_position.y + screen_size.y - float(window_size.y) - margin
 	)
 
 	var x := clampf(hint.x + randf_range(-320.0, 320.0), screen_position.x + margin, max_x)
-	var y := clampf(hint.y + randf_range(-220.0, 220.0), screen_position.y + margin, max_y)
+	var y := clampf(hint.y + randf_range(-220.0, 220.0), screen_position.y + top_margin, max_y)
 	return Vector2i(roundi(x), roundi(y))
 
 
