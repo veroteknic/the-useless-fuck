@@ -7,7 +7,7 @@ Jeremy wanders and hops around on his own.
 - Left-click: he says something.
 - Left-drag and release: throw him.
 - Right-click: opens Jeremy's action/status window. Use **eat tab** there to close the active browser tab.
-- Middle-click: he snatches the pointer to his face for a moment, then loses interest. He may also chase a nearby pointer, but the grab only lands when the pointer is actually touching his hitbox.
+- Middle-click: he snatches the pointer to his face for a moment, then loses interest. He may also chase a nearby pointer, but the grab only lands when the pointer is actually touching his hitbox. Pointer grabs use the same DPI-aware coordinates as the game, so they land correctly on scaled displays.
 
 The right-click window has buttons for stealing the cursor, forcing a chase, writing a note, speaking, eating a tab, and closing the menu. It also shows live state, timers, position, and mouse coordinates for debugging.
 

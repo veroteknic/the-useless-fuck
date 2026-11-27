@@ -15,6 +15,7 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 - Validate dialogue and menu calls before dispatch, and keep speech latches from getting trapped during tab eating.
 - Aim cursor grabs directly at Jeremy's face instead of his body centre.
 - Only trigger cursor grabs when the pointer actually intersects Jeremy's hitbox.
+- Make the pointer helper DPI-aware so grabs land on the face instead of down/right on scaled displays.
 - Correct the animation documentation: `jumping` exists; `eating` remains optional.
 
 ## 2026-11-27
