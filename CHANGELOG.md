@@ -8,6 +8,15 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 
 ## 2026-11-27
 
+- Add a behaviour director skeleton as the single request/status authority for future autonomous behaviours.
+- Add one canonical state readout used by the action/status menu.
+- Add a drag-release watchdog so a lost mouse-up cannot leave Jeremy stuck.
+- Stop cursor cooldowns being consumed by rejected steal/chase attempts.
+- Validate dialogue and menu calls before dispatch, and keep speech latches from getting trapped during tab eating.
+- Correct the animation documentation: `jumping` exists; `eating` remains optional.
+
+## 2026-11-27
+
 - Open Jeremy's notes in real Windows Notepad windows instead of custom sticky-note windows.
 - Keep Notepad from stealing keyboard focus from the browser.
 - Add top padding to notes, move them away from the top screen edge, and make the windows a bit smaller.

@@ -3,7 +3,7 @@ extends Window
 # A small no-focus window that gives the human direct access to Jeremy's
 # tricks, plus a live readout useful for spotting frozen/stuck states.
 
-const MENU_SIZE := Vector2i(300, 430)
+const MENU_SIZE := Vector2i(300, 470)
 
 var pet: Node
 var status_label: Label
@@ -108,85 +108,73 @@ func refresh_status() -> void:
 		status_label.text = "jeremy is gone."
 		return
 
+	var status := {}
+	if pet.has_method("get_behavior_status"):
+		status = pet.call("get_behavior_status")
+
 	var lines := [
-		"state: " + _current_state(),
-		"grounded: " + str(pet.get("grounded")),
-		"airborne: " + str(pet.get("airborne")),
-		"walking: " + str(pet.get("walking")),
-		"dragging: " + str(pet.get("dragging")),
-		"cursor chase: " + str(pet.get("cursor_chasing")),
-		"cursor steal: " + str(pet.get("cursor_stealing")),
-		"tabs today: " + str(pet.get("tabs_eaten")),
+		"state: " + str(status.get("state", "unknown")),
+		"behavior: " + str(status.get("active_behavior", "unknown")),
+		"paused: " + str(status.get("paused", false)),
+		"mischief: " + str(status.get("mischief", true)),
+		"grounded: " + str(status.get("grounded", false)),
+		"airborne: " + str(status.get("airborne", false)),
+		"walking: " + str(status.get("walking", false)),
+		"dragging: " + str(status.get("dragging", false)),
+		"cursor chase: " + str(status.get("cursor_chasing", false)),
+		"cursor steal: " + str(status.get("cursor_stealing", false)),
+		"tabs today: " + str(status.get("tabs_eaten", 0)),
 	]
 
-	var velocity: Vector2 = pet.get("velocity")
-	var desktop_position: Vector2 = pet.get("desktop_position")
+	var velocity: Vector2 = status.get("velocity", Vector2.ZERO)
+	var desktop_position: Vector2 = status.get("position", Vector2.ZERO)
 	var mouse_position := Vector2(DisplayServer.mouse_get_position())
 	lines.append("velocity: %.0f, %.0f" % [velocity.x, velocity.y])
 	lines.append("position: %.0f, %.0f" % [desktop_position.x, desktop_position.y])
 	lines.append("mouse: %.0f, %.0f" % [mouse_position.x, mouse_position.y])
-	lines.append("jump timer: %.1f" % float(pet.get("jump_timer")))
-	lines.append("walk timer: %.1f" % float(pet.get("walk_timer")))
-	lines.append("chatter timer: %.1f" % float(pet.get("chatter_timer")))
-	lines.append("chase cooldown: %.1f" % float(pet.get("cursor_chase_cooldown")))
+	lines.append("jump timer: %.1f" % float(status.get("jump_timer", 0.0)))
+	lines.append("walk timer: %.1f" % float(status.get("walk_timer", 0.0)))
+	lines.append("chatter timer: %.1f" % float(status.get("chatter_timer", 0.0)))
+	lines.append("chase cooldown: %.1f" % float(status.get("chase_cooldown", 0.0)))
 
-	var manager: Node = pet.get("notepad_manager")
-	lines.append("notepads: " + ("on" if manager != null else "off"))
+	var notes_on := bool(status.get("notepads", false))
+	lines.append("notepads: " + ("on" if notes_on else "off"))
+
+	var recent: Array = status.get("recent", [])
+	if not recent.is_empty():
+		lines.append("last: " + str(recent[recent.size() - 1]))
 
 	status_label.text = "\n".join(lines)
 
 
-func _current_state() -> String:
-	if bool(pet.get("cursor_stealing")):
-		return "cursor steal"
-	if bool(pet.get("cursor_chasing")):
-		return "cursor chase"
-	if bool(pet.get("dragging")):
-		return "dragged"
-	if bool(pet.get("eating")):
-		return "eating tab"
-	if bool(pet.get("edge_hanging")):
-		return "wall hang"
-	if bool(pet.get("edge_peeking")):
-		return "ceiling peek"
-	if bool(pet.get("celebrating")):
-		return "celebrating"
-	if bool(pet.get("speaking")):
-		return "talking"
-	if bool(pet.get("walking")):
-		return "walking"
-	if bool(pet.get("airborne")):
-		return "airborne"
-	return "idle"
-
-
-func _on_steal_cursor_pressed() -> void:
-	if is_instance_valid(pet):
-		pet.call("steal_cursor")
-
-
-func _on_chase_cursor_pressed() -> void:
-	if is_instance_valid(pet):
-		pet.call("start_cursor_chase")
-
-
-func _on_write_note_pressed() -> void:
+func _pet_request(action: String, args: Array = []) -> void:
 	if not is_instance_valid(pet):
 		return
 
-	var manager: Node = pet.get("notepad_manager")
-	if manager != null:
-		manager.call("write_note")
+	if pet.has_method("request_behavior"):
+		pet.call("request_behavior", action, args)
+	elif pet.has_method(action):
+		pet.callv(action, args)
+
+
+func _on_steal_cursor_pressed() -> void:
+	_pet_request("steal_cursor")
+
+
+func _on_chase_cursor_pressed() -> void:
+	_pet_request("start_cursor_chase")
+
+
+func _on_write_note_pressed() -> void:
+	_pet_request("write_note")
 
 
 func _on_say_pressed() -> void:
-	if is_instance_valid(pet):
-		pet.call("speak", "say_random_idle")
+	_pet_request("speak", ["say_random_idle"])
 
 
 func _on_eat_tab_pressed() -> void:
-	if is_instance_valid(pet):
-		pet.call("steal_tab")
+	_pet_request("steal_tab")
 
 
 func _on_close_pressed() -> void:

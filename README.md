@@ -13,7 +13,7 @@ The right-click window has buttons for stealing the cursor, forcing a chase, wri
 
 Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling, tug a nearby cursor, and write himself real Windows Notepad windows. His idle chatter notices the time of day, weekdays, and weekends. Tabs he eats are counted per day.
 
-Animations are separated in `jeremy_sprite_frames.tres`. Optional animations named `jumping` and `eating` are picked up automatically when added. The editable art source is included as `jeremy.aseprite`.
+Animations are separated in `jeremy_sprite_frames.tres`: `default`, `talkin`, `thumbs up!`, `flailing`, `falling`, `walking`, and `jumping`. An optional `eating` frame would be picked up automatically if added later. The editable art source is included as `jeremy.aseprite`.
 
 Dust puffs appear exactly where Jeremy's collision circle touches the screen: left, right, top, or bottom. Walking and jumping kick up a little dust from the bottom contact point. Eating a tab throws crumbs from a random contact point. Particles can be turned off with `particles_enabled` on the root script.
 

@@ -2,6 +2,7 @@ extends Node2D
 
 const NotepadManagerScript = preload("res://notepad_manager.gd")
 const JeremyMenuScript = preload("res://jeremy_menu.gd")
+const BehaviorDirectorScript = preload("res://behavior_director.gd")
 
 @onready var camera: Camera2D = $Camera2D
 @onready var body: RigidBody2D = $RigidBody2D
@@ -71,6 +72,7 @@ var drag_start_mouse := Vector2.ZERO
 var last_mouse_position := Vector2.ZERO
 var drag_velocity := Vector2.ZERO
 var drag_moved := false
+var drag_release_watchdog := 0.0
 
 var velocity_before_drag := Vector2.ZERO
 var grounded_before_drag := false
@@ -130,6 +132,7 @@ var cursor_chase_cooldown := 0.0
 
 var notepad_manager: Node
 var menu_window: Window
+var behavior_director: Node
 var tabs_eaten := 0
 
 # Kept as files in user:// because inline PowerShell here-strings lose their
@@ -206,6 +209,16 @@ func _ready() -> void:
 		notepad_manager.name = "NotepadManager"
 		add_child(notepad_manager)
 
+	behavior_director = BehaviorDirectorScript.new(self)
+	behavior_director.name = "BehaviorDirector"
+	add_child(behavior_director)
+
+	var director_config = behavior_director.get("config")
+	if director_config != null:
+		director_config.set("allow_cursor_steal", cursor_steal_enabled)
+		director_config.set("allow_cursor_chase", cursor_chase_enabled)
+		director_config.set("allow_notes", notepads_enabled)
+
 	_load_tab_count()
 	reset_cursor_auto_timer()
 	reset_cursor_chase_cooldown()
@@ -240,6 +253,14 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if behavior_director != null:
+		behavior_director.call("tick", delta)
+
+	if dragging:
+		drag_release_watchdog -= delta
+		if drag_release_watchdog <= 0.0 and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+			stop_dragging()
+
 	if dragging:
 		handle_dragging(delta)
 	else:
@@ -867,8 +888,26 @@ func _on_menu_closed(window: Window) -> void:
 		menu_window = null
 
 
+func get_state() -> String:
+	if behavior_director == null:
+		return "unknown"
+	return str(behavior_director.call("get_state"))
+
+
+func get_behavior_status() -> Dictionary:
+	if behavior_director == null:
+		return {"state": "unknown", "active_behavior": "unknown"}
+	return behavior_director.call("get_status") as Dictionary
+
+
+func request_behavior(action: String, args: Array = []) -> bool:
+	if behavior_director == null:
+		return false
+	return bool(behavior_director.call("request_behavior", action, args))
+
+
 func start_dragging() -> void:
-	if dragging:
+	if dragging or eating:
 		return
 
 	if cursor_stealing:
@@ -879,6 +918,7 @@ func start_dragging() -> void:
 
 	dragging = true
 	drag_moved = false
+	drag_release_watchdog = 0.12
 
 	velocity_before_drag = velocity
 	grounded_before_drag = grounded
@@ -936,6 +976,7 @@ func stop_dragging() -> void:
 		return
 
 	dragging = false
+	drag_release_watchdog = 0.0
 
 	if not drag_moved:
 		velocity = velocity_before_drag
@@ -991,8 +1032,8 @@ func update_animation(delta: float) -> void:
 		return
 
 	if airborne:
-		# A drawn "jumping" animation is optional; until it exists, the
-		# existing falling frame covers the whole hop.
+		# "jumping" plays only on the initial upward hop; every other airborne
+		# frame uses "falling".
 		if (
 			jump_launch
 			and velocity.y < 0.0
@@ -1032,10 +1073,13 @@ func update_animation(delta: float) -> void:
 
 
 func speak(method: String) -> void:
+	if dialogue == null or not dialogue.has_method(method):
+		return
+
 	dialogue.call(method)
-	# Only grounded speech can use talkin; falling and flailing keep their
-	# priority, and a celebration must not be interrupted.
-	if grounded and not dragging and not celebrating:
+	# Only grounded speech can use talkin; falling, flailing, eating and
+	# celebrations keep their priority.
+	if grounded and not dragging and not eating and not celebrating:
 		speaking = true
 		walking = false
 
@@ -1181,9 +1225,9 @@ func reset_cursor_chase_cooldown() -> void:
 	)
 
 
-func steal_cursor() -> void:
+func steal_cursor() -> bool:
 	if not cursor_steal_enabled or cursor_stealing or dragging or eating:
-		return
+		return false
 
 	if cursor_chasing:
 		_stop_cursor_chase()
@@ -1196,7 +1240,7 @@ func steal_cursor() -> void:
 
 	var script_path := _write_user_script(CURSOR_SCRIPT_NAME, cursor_ps)
 	if script_path.is_empty():
-		return
+		return false
 
 	cursor_stealing = true
 	cursor_steal_timer = cursor_steal_duration
@@ -1214,9 +1258,10 @@ func steal_cursor() -> void:
 
 	if cursor_steal_pid <= 0:
 		_stop_cursor_steal()
-		return
+		return false
 
 	speak("say_random_cursor")
+	return true
 
 
 func update_cursor_steal(delta: float) -> void:
@@ -1251,9 +1296,9 @@ func update_cursor_steal(delta: float) -> void:
 		and can_start_jump()
 		and not walking
 	):
-		steal_cursor()
-		reset_cursor_auto_timer()
-		reset_cursor_chase_cooldown()
+		if steal_cursor():
+			reset_cursor_auto_timer()
+			reset_cursor_chase_cooldown()
 		return
 
 	if (
@@ -1263,16 +1308,16 @@ func update_cursor_steal(delta: float) -> void:
 		and can_start_jump()
 		and not walking
 	):
-		start_cursor_chase()
-		reset_cursor_chase_cooldown()
+		if start_cursor_chase():
+			reset_cursor_chase_cooldown()
 
 
-func start_cursor_chase() -> void:
+func start_cursor_chase() -> bool:
 	if not cursor_steal_enabled or not cursor_chase_enabled:
-		return
+		return false
 
 	if cursor_chasing or cursor_stealing or dragging or eating:
-		return
+		return false
 
 	cursor_chasing = true
 	cursor_chase_timer = cursor_chase_timeout
@@ -1280,6 +1325,7 @@ func start_cursor_chase() -> void:
 	velocity.x = 0.0
 	walk_dust_timer = 0.0
 	reset_jump_timer()
+	return true
 
 
 func update_cursor_chase(delta: float) -> void:
@@ -1368,12 +1414,16 @@ func steal_tab() -> void:
 		_stop_cursor_chase()
 
 	eating = true
+	speaking = false
+	chattering = false
 	walking = false
 	jump_launch = false
 	velocity.x = 0.0
 	_play_eat_animation()
 	_animate_tab_eaten(tab_screen_position - window_position)
-	dialogue.call("say", "mine now.", 2.0)
+
+	if dialogue != null and dialogue.has_method("say"):
+		dialogue.call("say", "mine now.", 2.0)
 
 	# Let the visual tab reach his mouth before the real tab goes away.
 	await get_tree().create_timer(0.45).timeout
@@ -1474,7 +1524,7 @@ func _register_eaten_tab() -> void:
 	if dialogue != null and dialogue.has_method("say_eaten_tab"):
 		dialogue.call("say_eaten_tab", tabs_eaten)
 
-	if notepad_manager != null:
+	if notepad_manager != null and notepad_manager.has_method("write_note"):
 		var notes := [
 			"note to self: that tab was delicious.",
 			"note to self: tabs are snacks.",
@@ -1487,8 +1537,8 @@ func _register_eaten_tab() -> void:
 
 
 func _play_eat_animation() -> void:
-	# Drop in an "eating" animation on the SpriteFrames and it will be used
-	# automatically; until then talkin covers the mouth opening.
+	# The optional "eating" animation is used when present. The current sheet
+	# has no such frame, so "talkin" covers the mouth opening.
 	if sprite.sprite_frames != null and sprite.sprite_frames.has_animation(EAT_ANIMATION):
 		sprite.play(EAT_ANIMATION)
 	else:
