@@ -15,6 +15,8 @@ Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling,
 
 Animations are separated in `jeremy_sprite_frames.tres`: `default`, `talkin`, `thumbs up!`, `flailing`, `falling`, `walking`, and `jumping`. An optional `eating` frame would be picked up automatically if added later. The editable art source is included as `jeremy.aseprite`.
 
+Jeremy uses the bounds of whichever monitor he is currently on, so he does not fall into the empty space below a shorter secondary display.
+
 Dust puffs appear exactly where Jeremy's collision circle touches the screen: left, right, top, or bottom. Walking and jumping kick up a little dust from the bottom contact point. Eating a tab throws crumbs from a random contact point. Particles can be turned off with `particles_enabled` on the root script.
 
 ## Download

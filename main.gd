@@ -66,6 +66,7 @@ var velocity := Vector2.ZERO
 
 var desktop_min := Vector2.ZERO
 var desktop_max := Vector2.ZERO
+var active_screen := 0
 
 var dragging := false
 var drag_offset := Vector2.ZERO
@@ -245,6 +246,7 @@ func _ready() -> void:
 	))
 
 	desktop_position = screen_position + screen_size * 0.5
+	update_desktop_bounds()
 	desktop_position.x = clampf(desktop_position.x, desktop_min.x, desktop_max.x)
 	desktop_position.y = clampf(desktop_position.y, desktop_min.y, desktop_max.y)
 
@@ -265,6 +267,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if behavior_director != null:
 		behavior_director.call("tick", delta)
+
+	sync_active_screen()
 
 	if dragging:
 		drag_release_watchdog -= delta
@@ -473,32 +477,75 @@ func burst_crumbs() -> void:
 	crumb_particles.emitting = true
 
 
-func update_desktop_bounds() -> void:
+func get_screen_rect(index: int) -> Rect2:
 	var screen_count := DisplayServer.get_screen_count()
 
 	if screen_count <= 0:
-		desktop_min = Vector2.ZERO
-		desktop_max = Vector2(1920, 1080)
-		return
+		return Rect2(Vector2.ZERO, Vector2(1920, 1080))
 
-	var first_position := Vector2(DisplayServer.screen_get_position(0))
-	var first_size := Vector2(DisplayServer.screen_get_size(0))
+	var safe_index := clampi(index, 0, screen_count - 1)
+	return Rect2(
+		Vector2(DisplayServer.screen_get_position(safe_index)),
+		Vector2(DisplayServer.screen_get_size(safe_index))
+	)
 
-	var min_position := first_position
-	var max_position := first_position + first_size
 
-	for i in range(1, screen_count):
-		var screen_position := Vector2(DisplayServer.screen_get_position(i))
-		var screen_size := Vector2(DisplayServer.screen_get_size(i))
+func nearest_screen(position: Vector2) -> int:
+	var screen_count := DisplayServer.get_screen_count()
 
-		min_position.x = minf(min_position.x, screen_position.x)
-		min_position.y = minf(min_position.y, screen_position.y)
+	if screen_count <= 0:
+		return 0
 
-		max_position.x = maxf(max_position.x, screen_position.x + screen_size.x)
-		max_position.y = maxf(max_position.y, screen_position.y + screen_size.y)
+	var best_screen := 0
+	var best_score := INF
 
-	desktop_min = min_position + Vector2(PET_RADIUS, PET_RADIUS)
-	desktop_max = max_position - Vector2(PET_RADIUS, PET_RADIUS)
+	for i in range(screen_count):
+		var rect := get_screen_rect(i)
+
+		if rect.has_point(position):
+			return i
+
+		var horizontal_gap := maxf(
+			rect.position.x - position.x,
+			position.x - rect.end.x
+		)
+		horizontal_gap = maxf(horizontal_gap, 0.0)
+
+		var vertical_gap := maxf(
+			rect.position.y - position.y,
+			position.y - rect.end.y
+		)
+		vertical_gap = maxf(vertical_gap, 0.0)
+
+		# Prefer the nearby column of monitors when walking across the desktop;
+		# a shorter monitor can have its floor above Jeremy's current height.
+		var score := horizontal_gap * 10.0 + vertical_gap
+
+		if score < best_score:
+			best_score = score
+			best_screen = i
+
+	return best_screen
+
+
+func apply_active_screen_bounds() -> void:
+	var rect := get_screen_rect(active_screen)
+	desktop_min = rect.position + Vector2(PET_RADIUS, PET_RADIUS)
+	desktop_max = rect.end - Vector2(PET_RADIUS, PET_RADIUS)
+
+
+func sync_active_screen() -> void:
+	var next_screen := nearest_screen(desktop_position)
+
+	if next_screen != active_screen:
+		active_screen = next_screen
+		apply_active_screen_bounds()
+		desktop_position.y = clampf(desktop_position.y, desktop_min.y, desktop_max.y)
+
+
+func update_desktop_bounds() -> void:
+	active_screen = nearest_screen(desktop_position)
+	apply_active_screen_bounds()
 
 
 func handle_physics(delta: float) -> void:
@@ -522,6 +569,7 @@ func handle_physics(delta: float) -> void:
 
 	velocity.y += gravity * delta
 	desktop_position += velocity * delta
+	sync_active_screen()
 
 	# Left wall.
 	if desktop_position.x < desktop_min.x:
@@ -753,6 +801,7 @@ func handle_ground_movement(delta: float) -> void:
 	if walking:
 		velocity.x = walk_direction * walk_speed
 		desktop_position.x += velocity.x * delta
+		sync_active_screen()
 
 		# Turn around instead of walking off the desktop.
 		if desktop_position.x <= desktop_min.x:
@@ -780,6 +829,7 @@ func handle_ground_movement(delta: float) -> void:
 		velocity.x = 0.0
 
 	desktop_position.x += velocity.x * delta
+	sync_active_screen()
 
 	# Landed slides still need to respect the screen edges.
 	if desktop_position.x < desktop_min.x:
@@ -974,6 +1024,9 @@ func handle_dragging(delta: float) -> void:
 		speak("say_random_grab")
 
 	desktop_position = mouse_position + drag_offset
+	sync_active_screen()
+	desktop_position.x = clampf(desktop_position.x, desktop_min.x, desktop_max.x)
+	desktop_position.y = clampf(desktop_position.y, desktop_min.y, desktop_max.y)
 
 	if delta > 0.0:
 		drag_velocity = (mouse_position - last_mouse_position) / delta
@@ -1356,11 +1409,9 @@ func update_cursor_chase(delta: float) -> void:
 	var direction := 0.0 if horizontal_distance < 1.0 else signf(delta_x)
 
 	velocity.x = direction * cursor_chase_speed
-	desktop_position.x = clampf(
-		desktop_position.x + velocity.x * delta,
-		desktop_min.x,
-		desktop_max.x
-	)
+	desktop_position.x += velocity.x * delta
+	sync_active_screen()
+	desktop_position.x = clampf(desktop_position.x, desktop_min.x, desktop_max.x)
 
 	if direction != 0.0:
 		sprite.flip_h = direction < 0.0
