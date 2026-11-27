@@ -6,8 +6,10 @@ Jeremy wanders and hops around on his own.
 
 - Left-click: he says something.
 - Left-drag and release: throw him.
-- Right-click while a browser is focused: he eats that tab.
+- Right-click: opens Jeremy's action/status window. Use **eat tab** there to close the active browser tab.
 - Middle-click: he steals your cursor for a moment, then loses interest. He may also chase a nearby pointer on his own before snatching it.
+
+The right-click window has buttons for stealing the cursor, forcing a chase, writing a note, speaking, eating a tab, and closing the menu. It also shows live state, timers, position, and mouse coordinates for debugging.
 
 Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling, tug a nearby cursor, and write himself real Windows Notepad windows. His idle chatter notices the time of day, weekdays, and weekends. Tabs he eats are counted per day.
 

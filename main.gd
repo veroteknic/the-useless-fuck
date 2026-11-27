@@ -1,6 +1,7 @@
 extends Node2D
 
 const NotepadManagerScript = preload("res://notepad_manager.gd")
+const JeremyMenuScript = preload("res://jeremy_menu.gd")
 
 @onready var camera: Camera2D = $Camera2D
 @onready var body: RigidBody2D = $RigidBody2D
@@ -128,6 +129,7 @@ var cursor_chase_timer := 0.0
 var cursor_chase_cooldown := 0.0
 
 var notepad_manager: Node
+var menu_window: Window
 var tabs_eaten := 0
 
 # Kept as files in user:// because inline PowerShell here-strings lose their
@@ -175,10 +177,13 @@ var cursor_ps := "\n".join([
 	'  if (Test-Path -LiteralPath $StopFile) { break }',
 	'  if (-not (Test-Path -LiteralPath $TargetFile)) { Start-Sleep -Milliseconds $StepMs; continue }',
 	'  $raw = (Get-Content -LiteralPath $TargetFile -Raw -ErrorAction SilentlyContinue).Trim()',
+	'  if (-not $raw.EndsWith(";")) { Start-Sleep -Milliseconds $StepMs; continue }',
+	'  $raw = $raw.TrimEnd([char]59)',
 	'  $parts = $raw.Split([char]44)',
 	'  if ($parts.Length -ge 2) {',
 	'    $tx = [int]$parts[0]',
 	'    $ty = [int]$parts[1]',
+	'    if ($tx -lt -10000 -or $tx -gt 10000 -or $ty -lt -10000 -or $ty -gt 10000) { Start-Sleep -Milliseconds $StepMs; continue }',
 	'    $p = New-Object JeremyCursor+POINT',
 	'    if ([JeremyCursor]::GetCursorPos([ref]$p)) {',
 	'      $nx = [int]($p.X + ($tx - $p.X) * 0.28)',
@@ -840,9 +845,26 @@ func _on_body_input_event(
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			start_dragging()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			steal_tab()
+			toggle_menu()
 		elif event.button_index == MOUSE_BUTTON_MIDDLE:
 			steal_cursor()
+
+
+func toggle_menu() -> void:
+	if menu_window != null and is_instance_valid(menu_window):
+		menu_window.queue_free()
+		menu_window = null
+		return
+
+	menu_window = JeremyMenuScript.new(self)
+	get_tree().root.add_child(menu_window)
+	menu_window.tree_exited.connect(_on_menu_closed.bind(menu_window))
+	menu_window.place_near(Vector2(DisplayServer.mouse_get_position()))
+
+
+func _on_menu_closed(window: Window) -> void:
+	if menu_window == window:
+		menu_window = null
 
 
 func start_dragging() -> void:
@@ -1141,7 +1163,7 @@ func _write_cursor_target() -> void:
 	if file == null:
 		return
 
-	file.store_string("%d,%d" % [
+	file.store_string("%d,%d;" % [
 		roundi(desktop_position.x),
 		roundi(desktop_position.y)
 	])

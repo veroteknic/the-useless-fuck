@@ -20,6 +20,8 @@ Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases)
 - Add Jeremy-authored sticky notes.
 - Add tab-eating escalation with crumbs, daily counts, and snack dialogue.
 - Add cursor stealing by middle-click, occasional automatic cursor tugs, and autonomous cursor chasing before the steal.
+- Add a right-click action/status window with tab eating, cursor tricks, notes, speech, and live diagnostics.
+- Ignore partial cursor target writes so the pointer cannot jump to a corner.
 - Add squash and stretch during jumps and landings.
 
 ## 2026-11-27
