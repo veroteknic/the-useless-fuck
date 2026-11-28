@@ -6,6 +6,18 @@ https://github.com/veroteknic/the-useless-fuck/releases/latest/download/jeremy.e
 
 Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases) for the complete version-by-version history. Each versioned release also includes a generated `changelog.txt` asset.
 
+## 2026-11-28
+
+- Move autonomous chatter timing, cursor timing, and weighted mischief choices into one director-ticked `AutonomyBehavior`; `main.gd` remains the action/input/window adapter.
+- Add an always-visible pixel mood bar with a menu readout and a toggle to hide it.
+- Gate stronger cursor/tab behaviour on grumpy mood and dramatic close on annoyed mood; idle time lowers the effective threshold without changing the persisted value.
+- Add personality-weighted autonomous choices with cooldowns, repetition damping, bounded history, and interruption checks.
+- Add a restorable dramatic close: browser tabs use `Ctrl+W` then `Ctrl+Shift+T`; non-browser windows require an explicit local allowlist, graceful `CloseMainWindow()`, and command-line relaunch.
+- Denylist essential system, terminal, and Jeremy windows; never kill a process.
+- Capture the foreground window before opening the action menu so menu buttons target the window the human was using.
+- Add menu controls for dramatic close, non-browser close permission, mood meter, and the new status/timer diagnostics.
+- Preserve pause, mischief, intensity, activity-frequency, dialogue-frequency, and per-gag disable controls.
+
 ## 2026-11-27
 
 - Add a behaviour director skeleton as the single request/status authority for future autonomous behaviours.

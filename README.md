@@ -6,12 +6,14 @@ Jeremy wanders and hops around on his own.
 
 - Left-click: he says something.
 - Left-drag and release: throw him.
-- Right-click: opens Jeremy's action/status window. Use **eat tab** there to close the active browser tab.
+- Right-click: opens Jeremy's action/status window. Use **eat tab** there to close the active browser tab, or **dramatic close** to close it and bring it straight back.
 - Middle-click: he snatches the pointer to his face for a moment, then loses interest. He may also chase a nearby pointer, but the grab only lands when the pointer is actually touching his hitbox. Pointer grabs use the same DPI-aware coordinates as the game, so they land correctly on scaled displays.
 
-The right-click window has buttons for stealing the cursor, forcing a chase, writing a note, speaking, eating a tab, and closing the menu. It also shows live state, timers, position, and mouse coordinates for debugging.
+The right-click window has buttons for stealing the cursor, forcing a chase, writing a note, speaking, eating a tab, dramatic close, allowing a non-browser window to be closed, and closing the menu. It also shows live state, timers, mood, the last autonomous choice, position, and mouse coordinates for debugging.
 
 Jeremy also gets bold on his own: he can cling to a wall, peek from the ceiling, tug a nearby cursor, and write himself real Windows Notepad windows. His idle chatter notices the time of day, weekdays, and weekends. Tabs he eats are counted per day.
+
+A single director-ticked `AutonomyBehavior` owns chatter timing, cursor timing, and weighted mischief choices. `main.gd` only supplies the concrete actions. Long idle stretches nudge the mood gates without changing the saved mood value.
 
 Walking, jumping, and falling are owned by a single director-ticked `LocomotionBehavior`. `main.gd` stays the adapter for input, window placement, drag/eating/cursor hooks, and drawing. The action/status window shows which behaviours are currently running.
 
@@ -23,10 +25,12 @@ Jeremy uses the bounds of whichever monitor he is currently on, so he does not f
 
 ### Jeremy's mood and your content
 
-- Jeremy keeps a small **mood meter** (`annoyed` → `pleased`) that reacts to being dragged, cursor grabs, eaten tabs, and you reading his notes. It is stored in `user://jeremy_mood.cfg`; a missing or corrupt file simply resets to neutral.
+- Jeremy keeps an always-visible **mood meter** (`annoyed` → `pleased`) that reacts to being dragged, cursor grabs, eaten tabs, dramatic closes, and you reading his notes. It is stored in `user://jeremy_mood.cfg`; a missing or corrupt file simply resets to neutral. The menu can hide the bar.
+- **Mood escalation**: grumpy Jeremy unlocks bolder cursor and tab behaviour; annoyed Jeremy may try a dramatic close. Idle time lowers the effective threshold. Personality weights and cooldowns keep the same trick from repeating back-to-back.
+- **Dramatic close**: browser tabs are closed with `Ctrl+W` and restored with `Ctrl+Shift+T`. Non-browser windows are only eligible after you press **allow foreground close** with that window in front; Jeremy records a local allowlist in `user://jeremy_close_allowlist.cfg`, uses a graceful window close, and relaunches from the captured command line. Essential system, terminal, and Jeremy windows are denylisted. Nothing is killed.
 - **Stubborn flail**: occasionally he resists being dragged for a moment, using his existing `flailing` animation. This never locks him in place.
 - **Note reaction**: when you focus one of his Notepad windows briefly, he notices. He only closes the note if its text is unchanged, so your edits are never lost.
-- Right-click menu has toggles and sliders for pause, mischief, individual gags, mood-relevant settings, and user content.
+- Right-click menu has toggles and sliders for pause, mischief, mischief intensity, autonomous activity frequency, dialogue frequency, individual gags, mood meter, dramatic close, and user content.
 
 You can add your own content without changing the game:
 

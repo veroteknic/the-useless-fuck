@@ -13,7 +13,8 @@ const COOLDOWNS := {
 	"write_note": 2.0,
 	"speak": 0.4,
 	"stubborn_flail": 8.0,
-	"show_popin": 18.0
+	"show_popin": 18.0,
+	"dramatic_close": 30.0
 }
 
 var pet: Node
@@ -47,7 +48,9 @@ func tick(delta: float) -> void:
 	for key in cooldowns.keys():
 		cooldowns[key] = maxf(0.0, float(cooldowns[key]) - delta)
 
-	mood = move_toward(mood, 0.0, 0.02 * delta)
+	# Slow enough that a bad mood survives long enough to change what Jeremy
+	# chooses next, but still drifts back toward neutral when left alone.
+	mood = move_toward(mood, 0.0, 0.006 * delta)
 
 	if is_paused():
 		for key in behaviors.keys():
@@ -123,6 +126,10 @@ func adjust_mood(amount: float, reason: String = "") -> void:
 
 
 func get_mood_label() -> String:
+	return get_mood_tier()
+
+
+func get_mood_tier() -> String:
 	if mood <= -0.55:
 		return "annoyed"
 	if mood <= -0.2:
@@ -132,6 +139,14 @@ func get_mood_label() -> String:
 	if mood < 0.55:
 		return "curious"
 	return "pleased"
+
+
+func get_mood() -> float:
+	return mood
+
+
+func get_cooldown(action: String) -> float:
+	return float(cooldowns.get(action, 0.0))
 
 
 func is_paused() -> bool:
@@ -177,6 +192,8 @@ func is_action_allowed(action: String) -> bool:
 			return mischief and bool(config.get("allow_cursor_chase"))
 		"steal_tab":
 			return mischief and bool(config.get("allow_tab_eat"))
+		"dramatic_close":
+			return mischief and bool(config.get("allow_dramatic_close"))
 		"write_note":
 			return mischief and bool(config.get("allow_notes"))
 		"stubborn_flail":
@@ -226,6 +243,8 @@ func get_state() -> String:
 		return "dragged" if _flag("drag_moved") else "pressed"
 	if _flag("eating"):
 		return "eating tab"
+	if _flag("dramatic_closing"):
+		return "dramatic close"
 	if _flag("cursor_stealing"):
 		return "cursor steal"
 	if _flag("cursor_chasing"):
@@ -258,6 +277,8 @@ func get_config_snapshot() -> Dictionary:
 		"allow_cursor_steal": bool(config.get("allow_cursor_steal")),
 		"allow_cursor_chase": bool(config.get("allow_cursor_chase")),
 		"allow_tab_eat": bool(config.get("allow_tab_eat")),
+		"allow_dramatic_close": bool(config.get("allow_dramatic_close")),
+		"show_mood_meter": bool(config.get("show_mood_meter")),
 		"allow_notes": bool(config.get("allow_notes")),
 		"allow_drag_resist": bool(config.get("allow_drag_resist")),
 		"allow_note_reactions": bool(config.get("allow_note_reactions")),
@@ -283,18 +304,23 @@ func get_status() -> Dictionary:
 		"cursor_chasing": _flag("cursor_chasing"),
 		"cursor_stealing": _flag("cursor_stealing"),
 		"eating": _flag("eating"),
+		"dramatic_closing": _flag("dramatic_closing"),
 		"tabs_eaten": int(_pet_value("tabs_eaten", 0)),
 		"velocity": _pet_value("velocity", Vector2.ZERO),
 		"position": _pet_value("desktop_position", Vector2.ZERO),
 		"jump_timer": float(_pet_value("jump_timer", 0.0)),
 		"walk_timer": float(_pet_value("walk_timer", 0.0)),
 		"chatter_timer": float(_pet_value("chatter_timer", 0.0)),
+		"mischief_timer": float(_pet_value("mischief_timer", 0.0)),
+		"idle_time": float(_pet_value("idle_time", 0.0)),
+		"last_autonomous_action": str(_pet_value("last_autonomous_action", "")),
 		"chase_cooldown": float(_pet_value("cursor_chase_cooldown", 0.0)),
 		"notepads": _pet_value("notepad_manager", null) != null,
 		"paused": bool(config.get("paused")),
 		"mischief": bool(config.get("mischief_enabled")),
 		"mood": mood,
 		"mood_label": get_mood_label(),
+		"mood_tier": get_mood_tier(),
 		"recent": get_recent_history(3)
 	}
 
@@ -313,7 +339,7 @@ func _dispatch(action: String, args: Array) -> bool:
 	match action:
 		"steal_cursor", "start_cursor_chase", "steal_tab":
 			return _call_pet(action, [])
-		"stubborn_flail", "show_popin":
+		"stubborn_flail", "show_popin", "dramatic_close":
 			return _call_pet(action, [])
 		"speak":
 			if args.is_empty():

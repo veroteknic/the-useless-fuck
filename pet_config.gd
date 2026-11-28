@@ -16,6 +16,8 @@ extends Resource
 @export var allow_cursor_steal := true
 @export var allow_cursor_chase := true
 @export var allow_tab_eat := true
+@export var allow_dramatic_close := true
+@export var show_mood_meter := true
 @export var allow_notes := true
 @export var allow_drag_resist := true
 @export var allow_note_reactions := true

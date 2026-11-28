@@ -5,7 +5,7 @@ const PixelUIScript = preload("res://pixel_ui.gd")
 # A small no-focus window that gives the human direct access to Jeremy's
 # tricks, plus a live readout useful for spotting frozen/stuck states.
 
-const MENU_SIZE := Vector2i(340, 760)
+const MENU_SIZE := Vector2i(340, 1000)
 
 var pet: Node
 var status_label: Label
@@ -43,6 +43,8 @@ func _init(pet_node: Node) -> void:
 	_add_button(layout, "write note", _on_write_note_pressed)
 	_add_button(layout, "say something", _on_say_pressed)
 	_add_button(layout, "eat tab", _on_eat_tab_pressed)
+	_add_button(layout, "dramatic close", _on_dramatic_close_pressed)
+	_add_button(layout, "allow foreground close", _on_allow_close_pressed)
 	_add_button(layout, "show pop-in", _on_show_popin_pressed)
 
 	layout.add_child(HSeparator.new())
@@ -61,6 +63,8 @@ func _init(pet_node: Node) -> void:
 	_add_check(layout, "cursor gags", "allow_cursor_steal", bool(config.get("allow_cursor_steal", true)))
 	_add_check(layout, "cursor chase", "allow_cursor_chase", bool(config.get("allow_cursor_chase", true)))
 	_add_check(layout, "tab eating", "allow_tab_eat", bool(config.get("allow_tab_eat", true)))
+	_add_check(layout, "dramatic close", "allow_dramatic_close", bool(config.get("allow_dramatic_close", true)))
+	_add_check(layout, "mood meter", "show_mood_meter", bool(config.get("show_mood_meter", true)))
 	_add_check(layout, "notes", "allow_notes", bool(config.get("allow_notes", true)))
 	_add_check(layout, "drag resistance", "allow_drag_resist", bool(config.get("allow_drag_resist", true)))
 	_add_check(layout, "note reactions", "allow_note_reactions", bool(config.get("allow_note_reactions", true)))
@@ -183,6 +187,12 @@ func refresh_status() -> void:
 		"paused: " + str(status.get("paused", false)),
 		"mischief: " + str(status.get("mischief", true)),
 		"mood: " + str(status.get("mood_label", "meh")) + " (" + ("%.2f" % float(status.get("mood", 0.0))) + ")",
+		"mood tier: " + str(status.get("mood_tier", "meh")),
+		"idle: %.1f" % float(status.get("idle_time", 0.0)),
+		"last autonomous: " + str(status.get("last_autonomous_action", "")),
+		"dramatic close: " + str(status.get("dramatic_closing", false)),
+		"close allowlist: " + str(status.get("close_allowlist", 0)),
+		"close target: " + str(status.get("close_target", "")),
 		"grounded: " + str(status.get("grounded", false)),
 		"airborne: " + str(status.get("airborne", false)),
 		"walking: " + str(status.get("walking", false)),
@@ -201,6 +211,7 @@ func refresh_status() -> void:
 	lines.append("jump timer: %.1f" % float(status.get("jump_timer", 0.0)))
 	lines.append("walk timer: %.1f" % float(status.get("walk_timer", 0.0)))
 	lines.append("chatter timer: %.1f" % float(status.get("chatter_timer", 0.0)))
+	lines.append("mischief timer: %.1f" % float(status.get("mischief_timer", 0.0)))
 	lines.append("chase cooldown: %.1f" % float(status.get("chase_cooldown", 0.0)))
 
 	var notes_on := bool(status.get("notepads", false))
@@ -241,6 +252,21 @@ func _on_say_pressed() -> void:
 
 func _on_eat_tab_pressed() -> void:
 	_pet_request("steal_tab")
+
+
+func _on_dramatic_close_pressed() -> void:
+	if is_instance_valid(pet) and pet.has_method("dramatic_close_captured"):
+		pet.call("dramatic_close_captured")
+		return
+	_pet_request("dramatic_close")
+
+
+func _on_allow_close_pressed() -> void:
+	if is_instance_valid(pet) and pet.has_method("allow_captured_foreground_close"):
+		pet.call("allow_captured_foreground_close")
+		return
+	if is_instance_valid(pet) and pet.has_method("allow_foreground_close"):
+		pet.call("allow_foreground_close")
 
 
 func _on_show_popin_pressed() -> void:

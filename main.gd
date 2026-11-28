@@ -4,6 +4,8 @@ const NotepadManagerScript = preload("res://notepad_manager.gd")
 const JeremyMenuScript = preload("res://jeremy_menu.gd")
 const BehaviorDirectorScript = preload("res://behavior_director.gd")
 const LocomotionBehaviorScript = preload("res://locomotion_behavior.gd")
+const AutonomyBehaviorScript = preload("res://autonomy_behavior.gd")
+const DramaticCloseManagerScript = preload("res://dramatic_close_manager.gd")
 const PixelUIScript = preload("res://pixel_ui.gd")
 
 @onready var camera: Camera2D = $Camera2D
@@ -28,6 +30,7 @@ const POPIN_DIR_NAME := "jeremy_popins"
 const POPIN_MAX_SIZE := Vector2(220, 180)
 const POPIN_VISIBLE_TIME := 2.6
 const POPIN_FADE_TIME := 0.5
+const MOOD_BAR_WIDTH := 132.0
 
 @export var gravity := 1600.0
 @export var bounce := 0.55
@@ -101,7 +104,11 @@ var celebrating := false
 var chattering := false
 var speaking := false
 var eating := false
+var dramatic_closing := false
 var chatter_timer := 0.0
+var mischief_timer := 0.0
+var idle_time := 0.0
+var last_autonomous_action := ""
 var walking := false
 var walk_direction := 1.0
 var walk_timer := 0.0
@@ -143,10 +150,16 @@ var cursor_chase_cooldown := 0.0
 var notepad_manager: Node
 var menu_window: Window
 var behavior_director: Node
+var dramatic_close_manager: Node
 var tabs_eaten := 0
 
 var popin_sprite: Sprite2D
 var popin_timer := 0.0
+
+var mood_layer: CanvasLayer
+var mood_panel: PanelContainer
+var mood_fill: ColorRect
+var mood_label: Label
 
 # Kept as files in user:// because inline PowerShell here-strings lose their
 # quotes when passed through OS.execute's argument list on Windows.
@@ -226,6 +239,11 @@ func _ready() -> void:
 	_setup_physics()
 	_setup_particles()
 	_setup_popin()
+	_setup_mood_meter()
+
+	dramatic_close_manager = DramaticCloseManagerScript.new()
+	dramatic_close_manager.name = "DramaticCloseManager"
+	add_child(dramatic_close_manager)
 
 	if notepads_enabled:
 		notepad_manager = NotepadManagerScript.new()
@@ -247,6 +265,11 @@ func _ready() -> void:
 	var locomotion_behavior = LocomotionBehaviorScript.new("locomotion", behavior_director)
 	behavior_director.call("register_behavior", locomotion_behavior)
 
+	# One behaviour owns autonomous timing and weighted choice; the concrete
+	# actions still go through the director's existing request path.
+	var autonomy_behavior = AutonomyBehaviorScript.new("autonomy", behavior_director)
+	behavior_director.call("register_behavior", autonomy_behavior)
+
 	if notepad_manager != null:
 		notepad_manager.set("note_read_callback", Callable(self, "_on_note_read"))
 		if behavior_director != null:
@@ -264,6 +287,7 @@ func _ready() -> void:
 	_load_tab_count()
 	reset_cursor_auto_timer()
 	reset_cursor_chase_cooldown()
+	reset_mischief_timer()
 
 	await get_tree().process_frame
 
@@ -289,6 +313,7 @@ func _ready() -> void:
 	reset_chatter_timer()
 	reset_walk_pause_timer()
 	reset_jump_timer()
+	_update_mood_meter(0.0)
 	play_animation("default")
 
 	update_window_position()
@@ -300,6 +325,7 @@ func _process(delta: float) -> void:
 		behavior_director.call("tick", delta)
 
 	update_popin(delta)
+	_update_mood_meter(delta)
 
 	if behavior_director != null and bool(behavior_director.call("is_paused")):
 		update_window_position()
@@ -363,6 +389,96 @@ func _setup_popin() -> void:
 	popin_sprite.z_index = 20
 	popin_sprite.visible = false
 	add_child(popin_sprite)
+
+
+func _setup_mood_meter() -> void:
+	# Always-visible pixel bar in the pet window. It sits below Jeremy, outside
+	# the click-through hitbox, so it never steals input from the desktop.
+	mood_layer = CanvasLayer.new()
+	mood_layer.layer = 24
+	add_child(mood_layer)
+
+	var root := Control.new()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.set_anchors_and_offsets_preset(
+		Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, false
+	)
+	root.offset_left = 6.0
+	root.offset_right = 6.0 + MOOD_BAR_WIDTH + 16.0
+	root.offset_top = -38.0
+	root.offset_bottom = -6.0
+	mood_layer.add_child(root)
+
+	var layout := VBoxContainer.new()
+	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layout.add_theme_constant_override("separation", 2)
+	root.add_child(layout)
+
+	var label := Label.new()
+	label.text = "mood"
+	PixelUIScript.apply(label, 9, true)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(label)
+	mood_label = label
+
+	mood_panel = PanelContainer.new()
+	mood_panel.custom_minimum_size = Vector2(MOOD_BAR_WIDTH, 10)
+	mood_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.05, 0.06, 0.9)
+	style.set_border_width_all(2)
+	style.border_color = Color(0.85, 0.85, 0.85, 0.95)
+	mood_panel.add_theme_stylebox_override("panel", style)
+	layout.add_child(mood_panel)
+
+	var background := ColorRect.new()
+	background.color = Color(0.12, 0.12, 0.14, 1.0)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mood_panel.add_child(background)
+
+	mood_fill = ColorRect.new()
+	mood_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mood_fill.anchor_left = 0.0
+	mood_fill.anchor_top = 0.0
+	mood_fill.anchor_right = 0.0
+	mood_fill.anchor_bottom = 1.0
+	mood_fill.offset_left = 0.0
+	mood_fill.offset_top = 0.0
+	mood_fill.offset_right = 0.0
+	mood_fill.offset_bottom = 0.0
+	mood_panel.add_child(mood_fill)
+
+
+func _update_mood_meter(_delta: float) -> void:
+	if mood_layer == null:
+		return
+
+	var show := true
+	if behavior_director != null:
+		var pet_config = behavior_director.get("config")
+		if pet_config != null:
+			var value: Variant = pet_config.get("show_mood_meter")
+			show = true if value == null else bool(value)
+
+	mood_layer.visible = show
+	if not show or behavior_director == null:
+		return
+
+	var mood := clampf(float(behavior_director.get("mood")), -1.0, 1.0)
+	var tier := str(behavior_director.call("get_mood_tier"))
+	if mood_label != null:
+		mood_label.text = "mood: " + tier
+
+	mood_fill.offset_right = MOOD_BAR_WIDTH * clampf((mood + 1.0) * 0.5, 0.0, 1.0)
+
+	if mood <= -0.2:
+		mood_fill.color = Color("#e0524a")
+	elif mood < 0.2:
+		mood_fill.color = Color("#e0c04a")
+	else:
+		mood_fill.color = Color("#55c26a")
 
 
 func update_popin(delta: float) -> void:
@@ -901,6 +1017,11 @@ func toggle_menu() -> void:
 		menu_window = null
 		return
 
+	# Capture before the menu appears so dramatic close targets the window the
+	# human was actually using, not the menu itself.
+	if dramatic_close_manager != null:
+		dramatic_close_manager.call("capture_foreground")
+
 	menu_window = JeremyMenuScript.new(self)
 	get_tree().root.add_child(menu_window)
 	menu_window.tree_exited.connect(_on_menu_closed.bind(menu_window))
@@ -910,6 +1031,9 @@ func toggle_menu() -> void:
 func _on_menu_closed(window: Window) -> void:
 	if menu_window == window:
 		menu_window = null
+
+	if dramatic_close_manager != null:
+		dramatic_close_manager.call("clear_capture")
 
 
 func get_state() -> String:
@@ -921,7 +1045,28 @@ func get_state() -> String:
 func get_behavior_status() -> Dictionary:
 	if behavior_director == null:
 		return {"state": "unknown", "active_behavior": "unknown"}
-	return behavior_director.call("get_status") as Dictionary
+
+	var status := behavior_director.call("get_status") as Dictionary
+
+	var weights = behavior_director.call(
+		"call_behavior_method", "autonomy", "get_weights_snapshot"
+	)
+	if weights is Dictionary:
+		status["autonomy_weights"] = weights
+
+	if dramatic_close_manager != null:
+		status["close_allowlist"] = int(
+			dramatic_close_manager.call("get_allowlist_count")
+		)
+
+		var captured = dramatic_close_manager.call("get_captured_info")
+		if captured is Dictionary and not (captured as Dictionary).is_empty():
+			var info := captured as Dictionary
+			status["close_target"] = str(
+				info.get("title", info.get("name", ""))
+			)
+
+	return status
 
 
 func get_behavior_config() -> Dictionary:
@@ -941,6 +1086,9 @@ func set_behavior_config(key: String, value: Variant) -> bool:
 			_stop_cursor_steal()
 		if cursor_chasing:
 			_stop_cursor_chase()
+
+	if applied and key == "show_mood_meter":
+		_update_mood_meter(0.0)
 
 	if applied and notepad_manager != null:
 		if key == "allow_notes":
@@ -963,6 +1111,56 @@ func request_behavior(action: String, args: Array = []) -> bool:
 	if behavior_director == null:
 		return false
 	return bool(behavior_director.call("request_behavior", action, args))
+
+
+func allow_foreground_close(use_captured_target: bool = false) -> bool:
+	if dramatic_close_manager == null:
+		return false
+
+	var info := {}
+	if use_captured_target:
+		info = dramatic_close_manager.call("get_captured_info") as Dictionary
+
+	return bool(dramatic_close_manager.call("add_foreground_to_allowlist", info))
+
+
+func allow_captured_foreground_close() -> bool:
+	return allow_foreground_close(true)
+
+
+func dramatic_close(use_captured_target: bool = false) -> bool:
+	if dramatic_close_manager == null or eating or dramatic_closing or dragging:
+		return false
+
+	var info := {}
+	if use_captured_target:
+		info = dramatic_close_manager.call("get_captured_info") as Dictionary
+
+	if not bool(dramatic_close_manager.call("perform", info)):
+		return false
+
+	dramatic_closing = true
+
+	if dialogue != null and dialogue.has_method("say"):
+		dialogue.call("say", "oops.", 1.2)
+
+	if behavior_director != null:
+		behavior_director.call("adjust_mood", 0.06, "dramatic_close")
+
+	_finish_dramatic_close()
+	return true
+
+
+func dramatic_close_captured() -> bool:
+	return dramatic_close(true)
+
+
+func _finish_dramatic_close() -> void:
+	await get_tree().create_timer(1.8).timeout
+	dramatic_closing = false
+
+	if dialogue != null and dialogue.has_method("say"):
+		dialogue.call("say", "never happened.", 1.4)
 
 
 func _on_note_read(_text: String, _entry: Dictionary) -> void:
@@ -1170,26 +1368,8 @@ func update_animation(delta: float) -> void:
 		if chattering:
 			return
 
-		chatter_timer -= delta
-
-		if chatter_timer <= 0.0:
-			chattering = true
-			if randf() < 0.08:
-				request_behavior("show_popin")
-			if randf() < context_chatter_chance:
-				speak("say_contextual")
-			elif (
-				randf() < 0.12
-				and behavior_director != null
-				and bool(behavior_director.call("is_action_allowed", "custom_content"))
-				and dialogue != null
-				and dialogue.has_method("say_random_custom")
-			):
-				speak("say_random_custom")
-			else:
-				speak("say_random_idle")
-			return
-
+		# Dialogue timing and choice belong to the director-ticked autonomy
+		# behaviour now. This function only draws the resulting state.
 		if walking:
 			play_animation("walking")
 			return
@@ -1202,6 +1382,7 @@ func speak(method: String) -> void:
 		return
 
 	dialogue.call(method)
+	reset_chatter_timer()
 	# Only grounded speech can use talkin; falling, flailing, eating and
 	# celebrations keep their priority.
 	if grounded and not dragging and not eating and not celebrating:
@@ -1244,12 +1425,20 @@ func start_celebration() -> void:
 	speaking = false
 
 
+# Autonomy wrappers: callers can still reset timers or ask for actions, but the
+# clocks and selections live in the director-ticked AutonomyBehavior.
 func reset_chatter_timer() -> void:
-	chatter_timer = scaled_interval(
-		chatter_interval_min,
-		chatter_interval_max,
-		"dialogue_frequency"
-	)
+	if behavior_director != null:
+		behavior_director.call(
+			"call_behavior_method", "autonomy", "reset_chatter_timer"
+		)
+
+
+func reset_mischief_timer() -> void:
+	if behavior_director != null:
+		behavior_director.call(
+			"call_behavior_method", "autonomy", "reset_mischief_timer"
+		)
 
 
 func update_window_position() -> void:
@@ -1342,21 +1531,17 @@ func _write_cursor_target() -> void:
 
 
 func reset_cursor_auto_timer() -> void:
-	cursor_auto_timer = scaled_interval(
-		cursor_steal_auto_min,
-		cursor_steal_auto_max,
-		"activity_frequency",
-		true
-	)
+	if behavior_director != null:
+		behavior_director.call(
+			"call_behavior_method", "autonomy", "reset_cursor_auto_timer"
+		)
 
 
 func reset_cursor_chase_cooldown() -> void:
-	cursor_chase_cooldown = scaled_interval(
-		cursor_chase_cooldown_min,
-		cursor_chase_cooldown_max,
-		"activity_frequency",
-		true
-	)
+	if behavior_director != null:
+		behavior_director.call(
+			"call_behavior_method", "autonomy", "reset_cursor_chase_cooldown"
+		)
 
 
 func mouse_touches_pet() -> bool:
@@ -1365,7 +1550,13 @@ func mouse_touches_pet() -> bool:
 
 
 func steal_cursor(require_contact: bool = false) -> bool:
-	if not cursor_steal_enabled or cursor_stealing or dragging or eating:
+	if (
+		not cursor_steal_enabled
+		or cursor_stealing
+		or dragging
+		or eating
+		or dramatic_closing
+	):
 		return false
 
 	if require_contact and not mouse_touches_pet():
@@ -1425,40 +1616,8 @@ func update_cursor_steal(delta: float) -> void:
 	if cursor_chasing:
 		return
 
-	if (
-		not cursor_steal_auto_enabled
-		or not cursor_steal_enabled
-		or not behavior_allows("steal_cursor")
-		or not behavior_allows("start_cursor_chase")
-	):
-		return
-
-	cursor_auto_timer -= delta
-	cursor_chase_cooldown -= delta
-
-	var mouse_position := Vector2(DisplayServer.mouse_get_position())
-	var horizontal_distance := absf(mouse_position.x - desktop_position.x)
-
-	if (
-		cursor_auto_timer <= 0.0
-		and mouse_touches_pet()
-		and can_start_jump()
-		and not walking
-	):
-		if steal_cursor(true):
-			reset_cursor_auto_timer()
-			reset_cursor_chase_cooldown()
-		return
-
-	if (
-		cursor_chase_enabled
-		and cursor_chase_cooldown <= 0.0
-		and horizontal_distance <= cursor_chase_radius
-		and can_start_jump()
-		and not walking
-	):
-		if start_cursor_chase():
-			reset_cursor_chase_cooldown()
+	# Autonomous steal/chase timing now belongs to AutonomyBehavior. This
+	# function only finishes an active cursor steal.
 
 
 func start_cursor_chase() -> bool:
@@ -1544,7 +1703,7 @@ func _stop_cursor_steal() -> void:
 # ==================================================
 
 func steal_tab() -> void:
-	if eating or dragging:
+	if eating or dragging or dramatic_closing:
 		return
 
 	var info := _foreground_browser()
