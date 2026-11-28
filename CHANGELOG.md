@@ -6,6 +6,14 @@ https://github.com/veroteknic/the-useless-fuck/releases/latest/download/jeremy.e
 
 Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases) for the complete version-by-version history. Each versioned release also includes a generated `changelog.txt` asset.
 
+## 2026-11-28 (mood scale)
+
+- Move the mood meter out of Jeremy's pet window into its own borderless, no-focus, fully click-through overlay pinned to the left edge of his current monitor.
+- Make the meter vertical: it fills upward, with calm green at the bottom and rambunctious red at the top.
+- Invert mood escalation: a higher reading now means more rambunctious. `curious` unlocks bolder cursor/tab behaviour and `rambunctious` unlocks dramatic close.
+- Idle time now nudges the effective rambunctiousness upward instead of lowering a bad-mood threshold.
+- Rename mood tiers to `sleepy`, `calm`, `meh`, `curious`, and `rambunctious`; stubborn flail also scales with the higher-is-bolder reading.
+
 ## 2026-11-28
 
 - Move autonomous chatter timing, cursor timing, and weighted mischief choices into one director-ticked `AutonomyBehavior`; `main.gd` remains the action/input/window adapter.

@@ -30,7 +30,8 @@ const POPIN_DIR_NAME := "jeremy_popins"
 const POPIN_MAX_SIZE := Vector2(220, 180)
 const POPIN_VISIBLE_TIME := 2.6
 const POPIN_FADE_TIME := 0.5
-const MOOD_BAR_WIDTH := 132.0
+const MOOD_METER_SIZE := Vector2i(120, 240)
+const MOOD_BAR_SIZE := Vector2(18.0, 180.0)
 
 @export var gravity := 1600.0
 @export var bounce := 0.55
@@ -156,7 +157,7 @@ var tabs_eaten := 0
 var popin_sprite: Sprite2D
 var popin_timer := 0.0
 
-var mood_layer: CanvasLayer
+var mood_window: Window
 var mood_panel: PanelContainer
 var mood_fill: ColorRect
 var mood_label: Label
@@ -392,37 +393,45 @@ func _setup_popin() -> void:
 
 
 func _setup_mood_meter() -> void:
-	# Always-visible pixel bar in the pet window. It sits below Jeremy, outside
-	# the click-through hitbox, so it never steals input from the desktop.
-	mood_layer = CanvasLayer.new()
-	mood_layer.layer = 24
-	add_child(mood_layer)
+	# A separate borderless, no-focus, fully click-through window pinned to the
+	# left edge of Jeremy's current monitor. It fills upward as his mood rises.
+	mood_window = Window.new()
+	mood_window.name = "MoodMeter"
+	mood_window.title = "jeremy mood"
+	mood_window.size = MOOD_METER_SIZE
+	mood_window.borderless = true
+	mood_window.always_on_top = true
+	mood_window.transparent = true
+	mood_window.set_flag(Window.FLAG_BORDERLESS, true)
+	mood_window.set_flag(Window.FLAG_ALWAYS_ON_TOP, true)
+	mood_window.set_flag(Window.FLAG_TRANSPARENT, true)
+	mood_window.set_flag(Window.FLAG_NO_FOCUS, true)
+	mood_window.tree_entered.connect(_on_mood_window_ready, CONNECT_ONE_SHOT)
+	# The main scene is still setting up its own children during _ready(), so
+	# the OS subwindow has to be attached on the next deferred frame.
+	get_tree().root.add_child.call_deferred(mood_window)
 
 	var root := Control.new()
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.set_anchors_and_offsets_preset(
-		Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, false
-	)
-	root.offset_left = 6.0
-	root.offset_right = 6.0 + MOOD_BAR_WIDTH + 16.0
-	root.offset_top = -38.0
-	root.offset_bottom = -6.0
-	mood_layer.add_child(root)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mood_window.add_child(root)
 
 	var layout := VBoxContainer.new()
 	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	layout.add_theme_constant_override("separation", 2)
+	layout.alignment = BoxContainer.ALIGNMENT_CENTER
+	layout.add_theme_constant_override("separation", 4)
 	root.add_child(layout)
 
-	var label := Label.new()
-	label.text = "mood"
-	PixelUIScript.apply(label, 9, true)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layout.add_child(label)
-	mood_label = label
+	mood_label = Label.new()
+	mood_label.text = "mood"
+	PixelUIScript.apply(mood_label, 9, true)
+	mood_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mood_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(mood_label)
 
 	mood_panel = PanelContainer.new()
-	mood_panel.custom_minimum_size = Vector2(MOOD_BAR_WIDTH, 10)
+	mood_panel.custom_minimum_size = MOOD_BAR_SIZE
+	mood_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	mood_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var style := StyleBoxFlat.new()
@@ -441,18 +450,51 @@ func _setup_mood_meter() -> void:
 	mood_fill = ColorRect.new()
 	mood_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mood_fill.anchor_left = 0.0
-	mood_fill.anchor_top = 0.0
-	mood_fill.anchor_right = 0.0
+	mood_fill.anchor_top = 1.0
+	mood_fill.anchor_right = 1.0
 	mood_fill.anchor_bottom = 1.0
-	mood_fill.offset_left = 0.0
-	mood_fill.offset_top = 0.0
-	mood_fill.offset_right = 0.0
-	mood_fill.offset_bottom = 0.0
+	mood_fill.offset_left = 2.0
+	mood_fill.offset_right = -2.0
+	mood_fill.offset_top = -MOOD_BAR_SIZE.y
+	mood_fill.offset_bottom = -2.0
 	mood_panel.add_child(mood_fill)
 
 
+func _on_mood_window_ready() -> void:
+	if mood_window == null:
+		return
+
+	var full_rect := PackedVector2Array([
+		Vector2.ZERO,
+		Vector2(MOOD_METER_SIZE.x, 0),
+		Vector2(MOOD_METER_SIZE),
+		Vector2(0, MOOD_METER_SIZE.y)
+	])
+	DisplayServer.window_set_mouse_passthrough(full_rect, mood_window.get_window_id())
+	_position_mood_meter()
+
+
+func _position_mood_meter() -> void:
+	if mood_window == null:
+		return
+
+	var screen := active_screen
+	if screen < 0 or screen >= DisplayServer.get_screen_count():
+		screen = DisplayServer.window_get_current_screen()
+
+	var screen_position := Vector2(DisplayServer.screen_get_position(screen))
+	var screen_size := Vector2(DisplayServer.screen_get_size(screen))
+	var target := Vector2i(
+		roundi(screen_position.x + 4.0),
+		roundi(screen_position.y + (screen_size.y - float(MOOD_METER_SIZE.y)) * 0.5)
+	)
+
+	if mood_window.position != target:
+		mood_window.position = target
+
+
 func _update_mood_meter(_delta: float) -> void:
-	if mood_layer == null:
+	if mood_window == null:
 		return
 
 	var show := true
@@ -462,23 +504,26 @@ func _update_mood_meter(_delta: float) -> void:
 			var value: Variant = pet_config.get("show_mood_meter")
 			show = true if value == null else bool(value)
 
-	mood_layer.visible = show
+	mood_window.visible = show
 	if not show or behavior_director == null:
 		return
 
+	_position_mood_meter()
+
 	var mood := clampf(float(behavior_director.get("mood")), -1.0, 1.0)
-	var tier := str(behavior_director.call("get_mood_tier"))
 	if mood_label != null:
-		mood_label.text = "mood: " + tier
+		mood_label.text = str(behavior_director.call("get_mood_tier"))
 
-	mood_fill.offset_right = MOOD_BAR_WIDTH * clampf((mood + 1.0) * 0.5, 0.0, 1.0)
+	var fill_height := MOOD_BAR_SIZE.y - 4.0
+	mood_fill.offset_top = -fill_height * clampf((mood + 1.0) * 0.5, 0.0, 1.0)
 
+	# Calm is green, curious is yellow, and high rambunctiousness is red.
 	if mood <= -0.2:
-		mood_fill.color = Color("#e0524a")
-	elif mood < 0.2:
+		mood_fill.color = Color("#55c26a")
+	elif mood < 0.55:
 		mood_fill.color = Color("#e0c04a")
 	else:
-		mood_fill.color = Color("#55c26a")
+		mood_fill.color = Color("#e0524a")
 
 
 func update_popin(delta: float) -> void:

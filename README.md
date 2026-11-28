@@ -25,8 +25,8 @@ Jeremy uses the bounds of whichever monitor he is currently on, so he does not f
 
 ### Jeremy's mood and your content
 
-- Jeremy keeps an always-visible **mood meter** (`annoyed` → `pleased`) that reacts to being dragged, cursor grabs, eaten tabs, dramatic closes, and you reading his notes. It is stored in `user://jeremy_mood.cfg`; a missing or corrupt file simply resets to neutral. The menu can hide the bar.
-- **Mood escalation**: grumpy Jeremy unlocks bolder cursor and tab behaviour; annoyed Jeremy may try a dramatic close. Idle time lowers the effective threshold. Personality weights and cooldowns keep the same trick from repeating back-to-back.
+- Jeremy keeps an always-visible vertical **mood meter** pinned to the left edge of his current monitor. The higher it fills (`sleepy` → `rambunctious`), the more rambunctious he gets. It reacts to drags, cursor grabs, eaten tabs, dramatic closes, and you reading his notes. It is stored in `user://jeremy_mood.cfg`; a missing or corrupt file simply resets to neutral. The menu can hide the bar, and the whole overlay is click-through.
+- **Mood escalation**: once he is `curious` he unlocks bolder cursor and tab behaviour; at `rambunctious` he may try a dramatic close. Idle time nudges him further up the bar. Personality weights and cooldowns keep the same trick from repeating back-to-back.
 - **Dramatic close**: browser tabs are closed with `Ctrl+W` and restored with `Ctrl+Shift+T`. Non-browser windows are only eligible after you press **allow foreground close** with that window in front; Jeremy records a local allowlist in `user://jeremy_close_allowlist.cfg`, uses a graceful window close, and relaunches from the captured command line. Essential system, terminal, and Jeremy windows are denylisted. Nothing is killed.
 - **Stubborn flail**: occasionally he resists being dragged for a moment, using his existing `flailing` animation. This never locks him in place.
 - **Note reaction**: when you focus one of his Notepad windows briefly, he notices. He only closes the note if its text is unchanged, so your edits are never lost.

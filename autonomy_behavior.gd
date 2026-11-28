@@ -166,11 +166,11 @@ func _tick_cursor(delta: float, p) -> void:
 	var mouse_position := Vector2(DisplayServer.mouse_get_position())
 	var horizontal_distance := absf(mouse_position.x - _pet_vec(p, "desktop_position").x)
 
-	# Stealing is the bolder move: it waits for a grumpy Jeremy and real
+	# Stealing is the bolder move: it waits for a worked-up Jeremy and real
 	# hitbox contact, exactly like the old automatic timer did.
 	if (
 		auto_timer <= 0.0
-		and _effective_mood() <= -0.2
+		and _effective_mood() >= 0.2
 		and bool(p.call("mouse_touches_pet"))
 	):
 		if bool(director.call("request_behavior", "steal_cursor", [])):
@@ -246,7 +246,7 @@ func get_weights_snapshot() -> Dictionary:
 		* _config_number("mischievousness", 1.0)
 		* intensity
 		* idle_bonus
-		* (1.0 + clampf(-mood_value - 0.2, 0.0, 0.8))
+		* (1.0 + clampf(mood_value - 0.2, 0.0, 0.8))
 	)
 	weights["dramatic_close"] = (
 		0.24
@@ -254,12 +254,12 @@ func get_weights_snapshot() -> Dictionary:
 		* _config_number("stupidity", 1.0)
 		* intensity
 		* idle_bonus
-		* (1.0 + clampf(-mood_value - 0.55, 0.0, 0.5) * 2.0)
+		* (1.0 + clampf(mood_value - 0.55, 0.0, 0.5) * 2.0)
 	)
 
-	if mood_value > -0.2:
+	if mood_value < 0.2:
 		weights.erase("steal_tab")
-	if mood_value > -0.55 or _pet_num(p, "idle_time", 0.0) < 8.0:
+	if mood_value < 0.55 or _pet_num(p, "idle_time", 0.0) < 8.0:
 		weights.erase("dramatic_close")
 
 	for key in weights.keys():
@@ -341,9 +341,9 @@ func _effective_mood() -> float:
 	if director != null:
 		mood = clampf(float(director.get("mood")), -1.0, 1.0)
 
-	# Long idle stretches lower the gating threshold without changing the
-	# persisted mood value.
-	return mood - clampf(_pet_num(_pet(), "idle_time", 0.0) / 120.0, 0.0, 0.15)
+	# Long idle stretches raise the effective rambunctiousness without changing
+	# the persisted mood value.
+	return mood + clampf(_pet_num(_pet(), "idle_time", 0.0) / 120.0, 0.0, 0.15)
 
 
 func _scaled_interval(min_value: float, max_value: float, use_mischief: bool) -> float:

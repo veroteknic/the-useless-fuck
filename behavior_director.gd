@@ -131,14 +131,14 @@ func get_mood_label() -> String:
 
 func get_mood_tier() -> String:
 	if mood <= -0.55:
-		return "annoyed"
+		return "sleepy"
 	if mood <= -0.2:
-		return "grumpy"
+		return "calm"
 	if mood < 0.2:
 		return "meh"
 	if mood < 0.55:
 		return "curious"
-	return "pleased"
+	return "rambunctious"
 
 
 func get_mood() -> float:
@@ -171,9 +171,9 @@ func roll_stubborn_flail() -> bool:
 	var chance := 0.18 * float(config.get("stubbornness"))
 	chance *= clampf(float(config.get("mischief_intensity")), 0.0, 2.0)
 
-	if mood <= -0.2:
+	if mood >= 0.2:
 		chance *= 1.6
-	elif mood >= 0.55:
+	elif mood <= -0.55:
 		chance *= 0.6
 
 	chance = clampf(chance, 0.0, 0.75)
