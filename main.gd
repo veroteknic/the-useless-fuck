@@ -30,8 +30,8 @@ const POPIN_DIR_NAME := "jeremy_popins"
 const POPIN_MAX_SIZE := Vector2(220, 180)
 const POPIN_VISIBLE_TIME := 2.6
 const POPIN_FADE_TIME := 0.5
-const MOOD_METER_SIZE := Vector2i(120, 240)
-const MOOD_BAR_SIZE := Vector2(18.0, 180.0)
+const MOOD_METER_SIZE := Vector2i(96, 300)
+const MOOD_BAR_SIZE := Vector2(44.0, 240.0)
 
 @export var gravity := 1600.0
 @export var bounce := 0.55
@@ -161,6 +161,7 @@ var mood_window: Window
 var mood_panel: PanelContainer
 var mood_fill: ColorRect
 var mood_label: Label
+var mood_tier_label: Label
 
 # Kept as files in user:// because inline PowerShell here-strings lose their
 # quotes when passed through OS.execute's argument list on Windows.
@@ -424,7 +425,7 @@ func _setup_mood_meter() -> void:
 
 	mood_label = Label.new()
 	mood_label.text = "mood"
-	PixelUIScript.apply(mood_label, 9, true)
+	PixelUIScript.apply(mood_label, 12, true)
 	mood_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	mood_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layout.add_child(mood_label)
@@ -435,29 +436,37 @@ func _setup_mood_meter() -> void:
 	mood_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.05, 0.05, 0.06, 0.9)
-	style.set_border_width_all(2)
-	style.border_color = Color(0.85, 0.85, 0.85, 0.95)
+	style.bg_color = Color(0.04, 0.04, 0.05, 0.95)
+	style.set_border_width_all(4)
+	style.border_color = Color(0.92, 0.92, 0.92, 1.0)
 	mood_panel.add_theme_stylebox_override("panel", style)
 	layout.add_child(mood_panel)
 
 	var background := ColorRect.new()
-	background.color = Color(0.12, 0.12, 0.14, 1.0)
+	background.color = Color(0.10, 0.10, 0.12, 1.0)
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mood_panel.add_child(background)
 
+	# Top-anchored fill: full red at maximum, draining downward toward green.
 	mood_fill = ColorRect.new()
 	mood_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mood_fill.anchor_left = 0.0
-	mood_fill.anchor_top = 1.0
+	mood_fill.anchor_top = 0.0
 	mood_fill.anchor_right = 1.0
-	mood_fill.anchor_bottom = 1.0
-	mood_fill.offset_left = 2.0
-	mood_fill.offset_right = -2.0
-	mood_fill.offset_top = -MOOD_BAR_SIZE.y
-	mood_fill.offset_bottom = -2.0
+	mood_fill.anchor_bottom = 0.0
+	mood_fill.offset_left = 4.0
+	mood_fill.offset_right = -4.0
+	mood_fill.offset_top = 4.0
+	mood_fill.offset_bottom = 4.0
 	mood_panel.add_child(mood_fill)
+
+	mood_tier_label = Label.new()
+	mood_tier_label.text = "meh"
+	PixelUIScript.apply(mood_tier_label, 9, true)
+	mood_tier_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mood_tier_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layout.add_child(mood_tier_label)
 
 
 func _on_mood_window_ready() -> void:
@@ -511,19 +520,25 @@ func _update_mood_meter(_delta: float) -> void:
 	_position_mood_meter()
 
 	var mood := clampf(float(behavior_director.get("mood")), -1.0, 1.0)
-	if mood_label != null:
-		mood_label.text = str(behavior_director.call("get_mood_tier"))
+	var tier := str(behavior_director.call("get_mood_tier"))
 
-	var fill_height := MOOD_BAR_SIZE.y - 4.0
-	mood_fill.offset_top = -fill_height * clampf((mood + 1.0) * 0.5, 0.0, 1.0)
+	if mood_tier_label != null:
+		mood_tier_label.text = "wild!" if tier == "rambunctious" else tier
 
-	# Calm is green, curious is yellow, and high rambunctiousness is red.
-	if mood <= -0.2:
-		mood_fill.color = Color("#55c26a")
-	elif mood < 0.55:
-		mood_fill.color = Color("#e0c04a")
+	# The whole bar is red when worked up, then drains downward toward green.
+	var fraction := clampf((mood + 1.0) * 0.5, 0.0, 1.0)
+	var fill_height := MOOD_BAR_SIZE.y - 8.0
+	mood_fill.offset_top = 4.0
+	mood_fill.offset_bottom = 4.0 + fill_height * fraction
+
+	var calm := Color("#55c26a")
+	var warm := Color("#e0c04a")
+	var hot := Color("#e0524a")
+
+	if fraction <= 0.5:
+		mood_fill.color = calm.lerp(warm, fraction * 2.0)
 	else:
-		mood_fill.color = Color("#e0524a")
+		mood_fill.color = warm.lerp(hot, (fraction - 0.5) * 2.0)
 
 
 func update_popin(delta: float) -> void:

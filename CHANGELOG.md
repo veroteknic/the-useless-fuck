@@ -6,6 +6,12 @@ https://github.com/veroteknic/the-useless-fuck/releases/latest/download/jeremy.e
 
 Use the [releases page](https://github.com/veroteknic/the-useless-fuck/releases) for the complete version-by-version history. Each versioned release also includes a generated `changelog.txt` asset.
 
+## 2026-11-28 (meter look)
+
+- Make the left-edge mood meter a bigger, chunkier vertical gauge with a wide bar, thick frame, and short tier label.
+- Change the fill to a top-anchored drain: full red when rambunctious, draining downward and cooling to green as Jeremy calms down.
+- Smooth the color between green, yellow, and red instead of switching in hard steps.
+
 ## 2026-11-28 (mood scale)
 
 - Move the mood meter out of Jeremy's pet window into its own borderless, no-focus, fully click-through overlay pinned to the left edge of his current monitor.
